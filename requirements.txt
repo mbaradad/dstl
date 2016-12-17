@@ -1,2 +1,3 @@
 #passar a un format estandard
-pip shapely shapely==1.6b2
+pip install shapely==1.6b2
+pip install tifffile

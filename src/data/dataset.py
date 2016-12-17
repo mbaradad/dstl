@@ -34,22 +34,21 @@ class Dataset():
     if idx not in self.preloaded_images:
       images = self.processor.get_images(self.image_list[idx])
       if self.train:
-        masks= self.processor.get_masks(self.image_list[idx])
+        masks = self.processor.get_masks(self.image_list[idx], images.shape[1], images.shape[2])
         self.preloaded_images[idx] = [images, masks]
-        return self.preloaded_images[idx]
+        return self.preloaded_images[idx][0], self.preloaded_images[idx][1]
       else:
         return [images, np.array()]
-
 
   def generate(self, idxs):
     # maybe store everything in memory
     images = list()
     masks = list()
     for id in idxs:
-      images, masks = self.generate_one(id)
-      images.append(images)
-      masks.append(masks)
-    return np.asarray(masks), np.asarray(images)
+      im, m = self.generate_one(id)
+      images.append(im)
+      masks.append(m)
+    return [np.asarray(masks), np.asarray(images)]
 
   def generate_one_cropped(self, idx, crop_percentage, i, j, overlapping_percentage = 0):
     return None
