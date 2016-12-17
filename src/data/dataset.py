@@ -4,8 +4,9 @@ import numpy as np
 import random
 from image_processor import ImageProcessor
 import time
+import gc
 
-
+#TODO: reserve some samples for validation (probably only when cropping is implemented).
 class Dataset():
   def __init__(self, train=True):
     #Place the unziped files at this path
@@ -27,6 +28,9 @@ class Dataset():
     self.preloaded_images = dict()
     self.processor = ImageProcessor()
 
+  def get_image_list(self):
+    return self.image_list
+
   def generate_by_name(self, name):
     if name in self.image_list:
       return self.generate_one(self.image_list.index(name))
@@ -35,22 +39,28 @@ class Dataset():
     #only training images are stored in memory, test images are not
     if idx not in self.preloaded_images:
       images = self.processor.get_images(self.image_list[idx])
+      gc.collect()
       if self.train:
         masks = self.processor.get_masks(self.image_list[idx], images.shape[1], images.shape[2])
         self.preloaded_images[idx] = [images, masks]
+        gc.collect()
         return (self.preloaded_images[idx][0], self.preloaded_images[idx][1])
       else:
         return [images, np.array()]
 
   def generate(self, idxs):
     # maybe store everything in memory
-    images = list()
-    masks = list()
+    images = None
+    masks = None
     for id in idxs:
       im, m = self.generate_one(id)
-      images.append(im)
-      masks.append(m)
-    return [np.asarray(masks), np.asarray(images)]
+      if images is None:
+        images = im
+        masks = m
+      else:
+        images = np.append(images, im)
+        masks = np.append(masks, im)
+    return [images, masks]
 
   def generate_one_cropped(self, idx, crop_percentage, i, j, overlapping_percentage = 0):
     return None
@@ -74,8 +84,8 @@ if __name__ == "__main__":
   d = Dataset()
 
   start = time.clock()
-  for i in d.generator(1):
-    print np.shape(i[0])
-    print np.shape(i[1])
+  i = 0
+  for j in d.generator(1):
     print "time elapsed for processing image " + str(i) + ": " + str(time.clock() - start)
+    i += 1
     start = time.clock()

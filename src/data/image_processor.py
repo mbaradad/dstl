@@ -1,6 +1,8 @@
 from utils.dirs import *
 import pandas as pd
 from shapely.wkt import loads
+import matplotlib
+matplotlib.use('Agg')
 from matplotlib.patches import Polygon
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,6 +12,7 @@ from utils.utils import resize
 from matplotlib.collections import PatchCollection
 from tifffile import tifffile
 from postprocess import normalize_coordinates
+import gc
 
 '''
 Classes of masks
@@ -44,6 +47,7 @@ class ImageProcessor():
       image = resize(image, images[0].shape[0], images[0].shape[1])
       image = np.transpose(image, [2, 0, 1])
       images = np.append(images, image, axis=0)
+
     return images
 
   # TODO: maybe do it more efficiently, without requiring pyplot
@@ -53,13 +57,12 @@ class ImageProcessor():
 
     polygonsList = {}
     image = self.df_wkt[self.df_wkt.ImageId == idx]
-    masks = list()
+    masks = np.zeros([self.class_types, height, width], dtype="bool")
     #for cType in range(self.class_types):
     for cType in range(self.class_types):
       #TODO: CHECK if image has been previously preprocessed, and use that, once we know for sure that there are no errors
       polygonsList = loads(image[image.ClassType == (cType + 1)].MultipolygonWKT.values[0])
       if len(polygonsList) == 0:
-        masks.append(np.zeros([height, width]))
         continue
 
       plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
@@ -77,8 +80,8 @@ class ImageProcessor():
       y_min = self.grid_sizes[self.grid_sizes['Unnamed: 0'] == idx].iloc[0,2]
 
       for polygon in polygonsList:
-        transformed_coordinates = [normalize_coordinates(x, y, height, width, x_max, y_min,
-                                                         ) for (x, y) in np.array(polygon.exterior)]
+        transformed_coordinates = [normalize_coordinates(x, y, height, width, x_max, y_min,)
+                                   for (x, y) in np.array(polygon.exterior)]
         polygons.append(Polygon(np.array(transformed_coordinates)))
         color.append(c)
 
@@ -89,9 +92,10 @@ class ImageProcessor():
 
       plt.savefig(PREPROCESSED_INPUT + '/tmp.png', bbox_inches=extent)
 
-      plt.close()
+      plt.close('all')
+
       mask2 = cv2.imread(PREPROCESSED_INPUT + '/tmp.png')
       mask2 = resize(mask2 , height, width)
-
-      masks.append(np.asarray(mask2[:, :, 0], dtype="bool"))
-    return np.asarray(masks)
+      masks[cType] = np.asarray(mask2[:, :, 0], dtype="bool")
+      gc.collect()
+    return masks
