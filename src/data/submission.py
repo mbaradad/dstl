@@ -1,3 +1,4 @@
 
 
-def generat_submission():
+def generate_submission():
+  return None
