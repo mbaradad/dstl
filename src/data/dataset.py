@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import random
 from image_processor import ImageProcessor
+import time
+
 
 class Dataset():
   def __init__(self, train=True):
@@ -36,7 +38,7 @@ class Dataset():
       if self.train:
         masks = self.processor.get_masks(self.image_list[idx], images.shape[1], images.shape[2])
         self.preloaded_images[idx] = [images, masks]
-        return self.preloaded_images[idx][0], self.preloaded_images[idx][1]
+        return (self.preloaded_images[idx][0], self.preloaded_images[idx][1])
       else:
         return [images, np.array()]
 
@@ -70,8 +72,10 @@ class Dataset():
 
 if __name__ == "__main__":
   d = Dataset()
-  for i in d.generator(16):
-    print len(i)
-    print np.shape(i[0])
-    print np.shape(i[0])
 
+  start = time.clock()
+  for i in d.generator(1):
+    print np.shape(i[0])
+    print np.shape(i[1])
+    print "time elapsed for processing image " + str(i) + ": " + str(time.clock() - start)
+    start = time.clock()

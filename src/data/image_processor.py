@@ -9,6 +9,7 @@ import os
 from utils.utils import resize
 from matplotlib.collections import PatchCollection
 from tifffile import tifffile
+from postprocess import normalize_coordinates
 
 '''
 Classes of masks
@@ -54,49 +55,31 @@ class ImageProcessor():
     image = self.df_wkt[self.df_wkt.ImageId == idx]
     masks = list()
     #for cType in range(self.class_types):
-    for cType in range(4,5):
+    for cType in range(self.class_types):
       #TODO: CHECK if image has been previously preprocessed, and use that, once we know for sure that there are no errors
       polygonsList = loads(image[image.ClassType == (cType + 1)].MultipolygonWKT.values[0])
       if len(polygonsList) == 0:
-        masks.append(np.zeros([1, height, width]))
+        masks.append(np.zeros([height, width]))
         continue
 
-      #plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
-      # fig = plt.figure()
-      #plt.axis('off')
-      #plt.imshow(np.zeros([height, width, 3], dtype=np.uint8))
+      plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+      plt.axis('off')
+      plt.imshow(np.zeros([height, width, 3], dtype=np.uint8))
 
-      #ax = plt.gca()
-      #ax.set_autoscale_on(False)
-
-
-
-      polygonsList = {}
-      for cType in image.ClassType.unique():
-        polygonsList[cType] = loads(image[image.ClassType == cType].MultipolygonWKT.values[0])
-
-      # plot using matplotlib
-
-      fig, ax = plt.subplots(figsize=(8, 8))
-
-      # plotting, color by class type
-      for p in polygonsList:
-        for polygon in polygonsList[p]:
-          mpl_poly = Polygon(np.array(polygon.exterior), color=plt.cm.Set1(p * 10), lw=0, alpha=0.3)
-          ax.add_patch(mpl_poly)
-
-      ax.relim()
-      ax.autoscale_view()
+      ax = plt.gca()
+      ax.set_autoscale_on(False)
 
       c = (np.ones((1, 3))).tolist()[0]
       polygons = list()
       color = list()
-      fig, ax = plt.subplots(figsize=(8, 8))
+
+      x_max = self.grid_sizes[self.grid_sizes['Unnamed: 0'] == idx].iloc[0,1]
+      y_min = self.grid_sizes[self.grid_sizes['Unnamed: 0'] == idx].iloc[0,2]
 
       for polygon in polygonsList:
-        mpl_poly = Polygon(np.array(polygon.exterior), color=plt.cm.Set1(cType * 10), lw=0, alpha=0.3)
-        ax.add_patch(mpl_poly)
-        polygons.append(Polygon(np.array(polygon.exterior)))
+        transformed_coordinates = [normalize_coordinates(x, y, height, width, x_max, y_min,
+                                                         ) for (x, y) in np.array(polygon.exterior)]
+        polygons.append(Polygon(np.array(transformed_coordinates)))
         color.append(c)
 
       p = PatchCollection(polygons, facecolor=color)
@@ -110,5 +93,5 @@ class ImageProcessor():
       mask2 = cv2.imread(PREPROCESSED_INPUT + '/tmp.png')
       mask2 = resize(mask2 , height, width)
 
-      masks.append(mask2[:, :, 0].astype("bool"))
+      masks.append(np.asarray(mask2[:, :, 0], dtype="bool"))
     return np.asarray(masks)
