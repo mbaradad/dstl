@@ -2,7 +2,8 @@ from utils.dirs import *
 import pandas as pd
 from shapely.wkt import loads
 import matplotlib
-matplotlib.use('Agg')
+#Deactivate this to show plots when using matplotlib. If activated, headless matplotlib will be used
+#matplotlib.use('Agg')
 from matplotlib.patches import Polygon
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,7 +13,6 @@ from utils.utils import resize
 from matplotlib.collections import PatchCollection
 from tifffile import tifffile
 from postprocess import normalize_coordinates
-import gc
 
 '''
 Classes of masks
@@ -97,5 +97,4 @@ class ImageProcessor():
       mask2 = cv2.imread(PREPROCESSED_INPUT + '/tmp.png')
       mask2 = resize(mask2 , height, width)
       masks[cType] = np.asarray(mask2[:, :, 0], dtype="bool")
-      gc.collect()
     return masks
