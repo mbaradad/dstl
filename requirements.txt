@@ -1,3 +1,5 @@
 #passar a un format estandard
 pip install shapely==1.6b2
 pip install tifffile
+
+pip install sima

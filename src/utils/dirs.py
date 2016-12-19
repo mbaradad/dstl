@@ -9,6 +9,7 @@ GRID_SIZES = INPUT + '/grid_sizes.csv'
 
 PREPROCESSED_INPUT = '../preprocessed_input'
 OUTPUT = '../output'
+SUBMISSION = OUTPUT + '/submissions'
 
 if os.getcwd().endswith('src'):
   if not os.path.isdir(INPUT):
@@ -17,3 +18,5 @@ if os.getcwd().endswith('src'):
     os.mkdir(PREPROCESSED_INPUT)
   if not os.path.isdir(OUTPUT):
     os.mkdir(OUTPUT)
+  if not os.path.isdir(SUBMISSION):
+    os.mkdir(SUBMISSION)

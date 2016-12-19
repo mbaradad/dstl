@@ -23,8 +23,8 @@ class Dataset():
       self.image_list = np.asarray(train_images)
     else:
       #the opposite
-      df1 = pd.read_csv(GRID_SIZES)
-      all_images = df1['Unnamed: 0'].unique()
+      self.grid_sizes = pd.read_csv(GRID_SIZES)
+      all_images = self.grid_sizes['Unnamed: 0'].unique()
       self.image_list = [x for x in all_images if x not in np.asarray(train_images)]
 
     if len(subset_idx_list) > 0:
@@ -52,6 +52,12 @@ class Dataset():
   def get_image_list(self):
     return self.image_list
 
+  def get_grid_size(self, idx):
+    imname = self.image_list[idx]
+    x_max = self.grid_sizes[self.grid_sizes['Unnamed: 0'] == imname].iloc[0, 1]
+    y_min = self.grid_sizes[self.grid_sizes['Unnamed: 0'] == imname].iloc[0, 2]
+    return [x_max, y_min]
+
   def generate_by_name(self, name):
     if name in self.image_list:
       return self.generate_one(self.image_list.index(name))
@@ -66,7 +72,7 @@ class Dataset():
       else:
         #for test, don't store the images in memory, as it is not worth it (there are lots of images, and don't
         #require preprocessing
-        return [images, np.array()]
+        return [images, None]
     return (self.preloaded_images[idx][0], self.preloaded_images[idx][1])
 
   def generate(self, idxs):

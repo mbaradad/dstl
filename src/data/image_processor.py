@@ -4,7 +4,7 @@ from shapely.wkt import loads
 import numpy as np
 from utils.utils import resize
 from tifffile import tifffile
-from postprocess import normalize_coordinates
+from utils.utils import normalize_coordinates
 from PIL import Image, ImageDraw
 
 
