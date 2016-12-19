@@ -1,18 +1,12 @@
 from utils.dirs import *
 import pandas as pd
 from shapely.wkt import loads
-import matplotlib
-#Deactivate this to show plots when using matplotlib. If activated, headless matplotlib will be used
-#matplotlib.use('Agg')
-from matplotlib.patches import Polygon
-import matplotlib.pyplot as plt
 import numpy as np
-import cv2
-import os
 from utils.utils import resize
-from matplotlib.collections import PatchCollection
 from tifffile import tifffile
 from postprocess import normalize_coordinates
+from PIL import Image, ImageDraw
+
 
 '''
 Classes of masks
@@ -64,37 +58,18 @@ class ImageProcessor():
       polygonsList = loads(image[image.ClassType == (cType + 1)].MultipolygonWKT.values[0])
       if len(polygonsList) == 0:
         continue
-
-      plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
-      plt.axis('off')
-      plt.imshow(np.zeros([height, width, 3], dtype=np.uint8))
-
-      ax = plt.gca()
-      ax.set_autoscale_on(False)
-
-      c = (np.ones((1, 3))).tolist()[0]
       polygons = list()
-      color = list()
 
       x_max = self.grid_sizes[self.grid_sizes['Unnamed: 0'] == idx].iloc[0,1]
       y_min = self.grid_sizes[self.grid_sizes['Unnamed: 0'] == idx].iloc[0,2]
 
+      img = Image.new('L', (width, height), 0)
+
       for polygon in polygonsList:
         transformed_coordinates = [normalize_coordinates(x, y, height, width, x_max, y_min,)
                                    for (x, y) in np.array(polygon.exterior)]
-        polygons.append(Polygon(np.array(transformed_coordinates)))
-        color.append(c)
+        ImageDraw.Draw(img).polygon(transformed_coordinates, outline=1, fill=1)
 
-      p = PatchCollection(polygons, facecolor=color)
-      ax.add_collection(p)
-      extent = ax.get_window_extent().transformed(plt.gcf().dpi_scale_trans.inverted())
+      masks[cType] = np.asarray(np.expand_dims(img, 0), dtype="bool")
 
-
-      plt.savefig(PREPROCESSED_INPUT + '/tmp.png', bbox_inches=extent)
-
-      plt.close('all')
-
-      mask2 = cv2.imread(PREPROCESSED_INPUT + '/tmp.png')
-      mask2 = resize(mask2 , height, width)
-      masks[cType] = np.asarray(mask2[:, :, 0], dtype="bool")
     return masks
