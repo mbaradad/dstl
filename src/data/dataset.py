@@ -8,7 +8,7 @@ import gc
 
 #TODO: reserve some samples for validation (probably only when cropping is implemented).
 class Dataset():
-  def __init__(self, train=True):
+  def __init__(self, train=True, subset=[]):
     #Place the unziped files at this path
     self.root_path = INPUT
     self.train = train
@@ -23,6 +23,9 @@ class Dataset():
       df1 = pd.read_csv(GRID_SIZES)
       all_images = df1['Unnamed: 0'].unique()
       self.image_list = [x for x in all_images if x not in np.asarray(train_images)]
+
+    if len(subset) > 0:
+      self.image_list = self.image_list[subset]
 
     #To store previoulsy loaded images
     self.preloaded_images = dict()
@@ -81,7 +84,7 @@ class Dataset():
 
 
 if __name__ == "__main__":
-  d = Dataset()
+  d = Dataset(subset=[0,1,2])
 
   start = time.clock()
   i = 0
