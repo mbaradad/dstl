@@ -35,6 +35,19 @@ class Dataset():
     self.preloaded_images = dict()
     self.processor = ImageProcessor()
 
+    self.classes = ["Buildings",
+      "Manmade structures",
+      "Road",
+      "Track",
+      "Trees",
+      "Crops",
+      "Waterway",
+      "Standing water",
+      "Vehicle Large",
+      "Vehicle Small"]
+
+  def class_id_to_name(self, id):
+    return self.classes[id]
 
   def get_image_list(self):
     return self.image_list

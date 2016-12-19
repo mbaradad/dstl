@@ -3,8 +3,6 @@ import time
 
 if __name__ == "__main__":
   d = Dataset(subset=1)
-
-
   start = time.clock()
   i = 0
   for j in d.cropped_generator(16, 20):

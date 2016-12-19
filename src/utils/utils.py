@@ -1,4 +1,6 @@
 from scipy.ndimage.interpolation import zoom
+import matplotlib.pyplot as plt
+import numpy as np
 
 def resize(img, height, width):
   '''
@@ -9,3 +11,10 @@ def resize(img, height, width):
   img = zoom(img, [zoom_h, zoom_w, 1], mode='nearest', order=0)
   return img
 
+def imshow_th(image):
+  plt.imshow(np.transpose(image,[1,2,0]))
+def imshow_tf(image):
+  plt.imshow(image)
+
+def imshow_one_ch(image):
+  imshow_th([image[0, :, :]] * 3)
