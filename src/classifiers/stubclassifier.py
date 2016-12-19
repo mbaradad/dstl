@@ -2,7 +2,8 @@ import numpy
 
 
 class StubClassifier():
-  def __init__(self):
-    return
+  def __init__(self, dataset):
+    self.dataset = dataset
+
   def predict(self, image):
-    return np.zeros(image.shape)
+    return self.dataset.generate_one(0)[1]

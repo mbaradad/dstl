@@ -8,7 +8,7 @@ import gc
 
 #TODO: reserve some samples for validation (probably only when cropping is implemented).
 class Dataset():
-  def __init__(self, train=True, subset=[]):
+  def __init__(self, train=True, subset=-1):
     #Place the unziped files at this path
     self.root_path = INPUT
     self.train = train
@@ -24,9 +24,8 @@ class Dataset():
       all_images = df1['Unnamed: 0'].unique()
       self.image_list = [x for x in all_images if x not in np.asarray(train_images)]
 
-    if len(subset) > 0:
+    if subset != -1:
       self.image_list = self.image_list[subset]
-
     #To store previoulsy loaded images
     self.preloaded_images = dict()
     self.processor = ImageProcessor()
