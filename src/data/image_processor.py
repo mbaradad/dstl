@@ -42,6 +42,7 @@ class ImageProcessor():
       image = np.transpose(image, [2, 0, 1])
       images = np.append(images, image, axis=0)
 
+    #TODO: Noramlize and substract mean at this point?
     return images
 
   # TODO: maybe do it more efficiently, without requiring pyplot

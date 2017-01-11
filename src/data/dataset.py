@@ -9,9 +9,14 @@ random.seed(1337)
 from image_processor import ImageProcessor
 import time
 
+#When cropping, one out of 10 samples is reserved for validation, taking the modulus of the sample position
+#and the rest 9/10 are used for training
 #TODO: reserve some samples for validation (probably only when cropping is implemented).
 class Dataset():
   def __init__(self, train=True, subset_idx_list=[], subset=-1):
+    if len(subset_idx_list) > 0 and subset != -1:
+      raise Exception("Only idx list or subset can be -1")
+
     #Place the unziped files at this path
     self.root_path = INPUT
     self.train = train
@@ -19,7 +24,7 @@ class Dataset():
     #only those with annotations are training, it should be 22 images
     df = pd.read_csv(TRAIN_WKT)
     train_images = df['ImageId'].unique()
-    if self.train:
+    if self.partition == 'val' or 'train':
       self.image_list = np.asarray(train_images)
     else:
       #the opposite
@@ -29,7 +34,7 @@ class Dataset():
 
     if len(subset_idx_list) > 0:
       self.image_list = self.image_list[subset_idx_list]
-    if subset != -1:
+    elif subset != -1:
       self.image_list = self.image_list[:subset]
     #To store previoulsy loaded images
     self.preloaded_images = dict()
@@ -57,6 +62,9 @@ class Dataset():
     x_max = self.grid_sizes[self.grid_sizes['Unnamed: 0'] == imname].iloc[0, 1]
     y_min = self.grid_sizes[self.grid_sizes['Unnamed: 0'] == imname].iloc[0, 2]
     return [x_max, y_min]
+
+  def get_n_samples(self, subset, crops_per_image):
+    return len(self.get_generator_idx(crops_per_image, subset))
 
   def generate_by_name(self, name):
     if name in self.image_list:
@@ -88,6 +96,7 @@ class Dataset():
   #TODO: we are losing some pixels at the end, because of rounding issues. Check if this is a problem
   # overlapping is for each side: i.e overlapping_percentage = 1 ensembling three crops (the actual crop, the one on the
   # and the one on the right.
+  #TODO: add data augmentation
   def generate_one_cropped(self, idx, crops_per_axis, i, j, overlapping_percentage = 0):
     if overlapping_percentage > 1:
       raise Exception("Overlapping of cropped generator can be greater than 1")
@@ -154,11 +163,26 @@ class Dataset():
             idxs = np.sort(idx_values[i * chunk_size:(i + 1)* chunk_size])
             yield self.generate(idxs)
 
-  def cropped_generator(self, chunk_size, crops_per_image, overlapping_percentage=0):
-    #do the same as generator, but with crops
-    n_crops = crops_per_image**2
-    batch_len = n_crops*len(self.image_list)
+  def get_generator_idx(self, crops_per_image, subset):
+    n_crops = crops_per_image ** 2
+    batch_len = n_crops * len(self.image_list)
     idx_values = [x for x in range(batch_len)]
+    # select a subset for training and validation. For test use all the samples (though provably this generator is not used on the test set)
+    if subset != "" and not self.train:
+      raise Exception(
+        "The subset (val or train) should not be specified for the test data")
+    if subset not in ['val', 'train']:
+      raise Exception(
+        "The dataset has been inizialized with training data, so the subset (val or train) should be specified.")
+    if subset == 'val':
+      [x for x in idx_values if x % 10 == 9]
+    if subset == 'train':
+      [x for x in idx_values if x % 10 != 9]
+
+  #set subset to val or train for the case
+  def cropped_generator(self, chunk_size, crops_per_image, overlapping_percentage=0, subset=""):
+    #do the same as generator, but with crops
+    idx_values = self.get_generator_idx(crops_per_image, subset)
     while True:
       random.shuffle(idx_values)
       for i in range(len(idx_values) / chunk_size):

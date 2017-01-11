@@ -42,3 +42,4 @@ def normal_coordinates_to_dataset_coordinates(x_p, y_p, im_height, im_width, x_m
   h_p = im_height * (im_height / (im_height + 1))
   y = y_p*y_min/h_p
   return x, y
+
