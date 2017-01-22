@@ -74,3 +74,6 @@ class ImageProcessor():
       masks[cType] = np.asarray(np.expand_dims(img, 0), dtype="bool")
 
     return masks
+
+  def get_image_size(self, idx):
+    return tifffile.imread(THREE_BAND + '/' + idx + '.tif').shape[1:]

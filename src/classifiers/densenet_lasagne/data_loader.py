@@ -1,5 +1,3 @@
-from odo.backends.sparksql import chunk_file
-
 from data.dataset import Dataset
 from numpy.random import RandomState
 from data_iterator import DataIterator
@@ -9,17 +7,14 @@ def load_data(dataset, train_crop_size=(224, 224), one_hot=False,
               horizontal_flip=False,
               rng=RandomState(0)):
 
-    if isinstance(batch_size, int):
-        batch_size = [batch_size] * 3
+    d_train = dataset
+    train_generator = d_train.cropped_generator(chunk_size=batch_size, crop_size=train_crop_size, subset='train')
+    val_generator = d_train.cropped_generator(chunk_size=batch_size, crop_size=train_crop_size, subset='val')
 
-    d_train = Dataset(train=True)
-    train_generator = d_train.cropped_generator(chunk_size=batch_size, crops_per_image=10, subset='train')
-    val_generator = d_train.cropped_generator(chunk_size=batch_size, crops_per_image=10, subset='val')
-
-    train_iter = DataIterator(train_generator, d_train.get_n_samples('train', 10))
-    val_iter = DataIterator(val_generator, d_train.get_n_samples('val', 10))
+    train_iter = DataIterator(train_generator, d_train.get_n_samples('train', train_crop_size), d_train, batch_size)
+    val_iter = DataIterator(val_generator, d_train.get_n_samples('val', train_crop_size), d_train, batch_size)
     #
-    test_iter = DataIterator(None)
+    test_iter = DataIterator(None, 0, d_train, batch_size)
 
     return train_iter, val_iter, test_iter
 

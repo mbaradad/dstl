@@ -14,6 +14,7 @@ from lasagne.regularization import regularize_network_params
 from lasagne.layers import get_output
 from theano.tensor.shared_randomstreams import RandomStreams
 from data_loader import load_data
+import utils.dirs as dirs
 
 from metrics import theano_metrics, crossentropy
 
@@ -25,7 +26,7 @@ def batch_loop(iterator, f, epoch, phase, history):
     n_imgs = 0.
 
     for i in range(n_batches):
-        X, Y = iterator.next()
+        X, Y = iterator.generator.next()
         batch_size = X.shape[0]
         n_imgs += batch_size
 
@@ -203,11 +204,13 @@ def initiate_training(cf):
 
     if not os.path.exists(cf.savepath):
         os.makedirs(cf.savepath)
+    '''
     else:
         stop = raw_input('\033[93m The following folder already exists {}. '
                          'Do you want to overwrite it ? ([y]/n) \033[0m'.format(cf.savepath))
         if stop == 'n':
             return
+    '''
 
     print('-' * 75)
     print('Config\n')
@@ -215,7 +218,7 @@ def initiate_training(cf):
     print('Model path : ' + cf.model_path)
 
     # We also copy the model and the training scipt to reproduce exactly the experiments
-    shutil.copy('train.py', os.path.join(cf.savepath, 'train.py'))
+    shutil.copy(dirs.DENSNET_LASAGNE + '/train.py', os.path.join(cf.savepath, 'train.py'))
     shutil.copy(os.path.join('models', cf.model_path), os.path.join(cf.savepath, 'model.py'))
     shutil.copy(cf.config_path, os.path.join(cf.savepath, 'cf.py'))
 
@@ -248,7 +251,7 @@ if __name__ == '__main__':
 
     # Parse the configuration file
     cf = imp.load_source('config', arguments.config_path)
-    cf.savepath = arguments.exp_name
+    cf.savepath = dirs.DENSNET_LASAGNE_OUTPUT + '/'+arguments.exp_name
     cf.config_path = arguments.config_path
 
     # You can easily launch different experiments by slightly changing cf and initiate training

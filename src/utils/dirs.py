@@ -4,12 +4,21 @@ import os
 INPUT = '../input'
 SIXTEEN_BAND = INPUT + '/sixteen_band'
 THREE_BAND = INPUT + '/three_band'
-TRAIN_WKT = INPUT + '/train_wkt_v3.csv'
+TRAIN_WKT = INPUT + '/train_wkt_v4.csv'
 GRID_SIZES = INPUT + '/grid_sizes.csv'
 
 PREPROCESSED_INPUT = '../preprocessed_input'
 OUTPUT = '../output'
 SUBMISSION = OUTPUT + '/submissions'
+CLASSIFIERS = 'classifiers'
+CLASSIFIERS_OUTPUT = OUTPUT + '/classifiers'
+
+DENSNET_LASAGNE = CLASSIFIERS + '/densenet_lasagne'
+DENSNET_LASAGNE_OUTPUT = CLASSIFIERS_OUTPUT + '/densenet_lasagne'
+
+FCN8 = CLASSIFIERS + '/fcn8_caffe'
+FCN8_OUTPUT = CLASSIFIERS_OUTPUT+ '/caffe'
+
 
 if os.getcwd().endswith('src'):
   if not os.path.isdir(INPUT):
@@ -20,3 +29,9 @@ if os.getcwd().endswith('src'):
     os.mkdir(OUTPUT)
   if not os.path.isdir(SUBMISSION):
     os.mkdir(SUBMISSION)
+  if not os.path.isdir(CLASSIFIERS_OUTPUT):
+    os.mkdir(CLASSIFIERS_OUTPUT)
+  if not os.path.isdir(FCN8_OUTPUT):
+    os.mkdir(FCN8_OUTPUT)
+  if not os.path.isdir(DENSNET_LASAGNE_OUTPUT):
+    os.mkdir(DENSNET_LASAGNE_OUTPUT)
