@@ -6,7 +6,7 @@ from PIL import Image
 import random
 from data.dataset import Dataset
 
-class DSTLSegDataLayer(caffe.Layer):
+class DSTLDataLayer(caffe.Layer):
     """
     Load (input image, label image) pairs from PASCAL VOC
     one-at-a-time while reshaping the net to preserve dimensions.
@@ -39,10 +39,13 @@ class DSTLSegDataLayer(caffe.Layer):
 
         self.crop_size = params['crop_size']
         self.chunk_size = params['chunk_size']
+        self.overlapping_percentage = params['overlapping_percentage']
 
         self.dataset = Dataset(train=True)
-        self.generator = self.dataset.cropped_generator(self.chunk_size, self.crop_size, self.overlapping_percentage, subset=self.split
-                                                        )
+        self.generator = self.dataset.cropped_generator(1, self.crop_size, self.overlapping_percentage, subset=self.split)
+
+        self.image = self.generator.next()
+
         # two tops: data and label
         if len(top) != 2:
             raise Exception("Need to define two tops: data and label.")
@@ -53,8 +56,8 @@ class DSTLSegDataLayer(caffe.Layer):
 
     def reshape(self, bottom, top):
         # load image + label image pair
-        self.data = self.load_image(self.dataset.getimag[self.idx])
-        self.label = self.load_label(self.indices[self.idx])
+        self.data = self.load_image()
+        self.label = self.load_label()
         # reshape tops to fit (leading 1 is for batch dimension)
         top[0].reshape(1, *self.data.shape)
         top[1].reshape(1, *self.label.shape)
@@ -65,17 +68,14 @@ class DSTLSegDataLayer(caffe.Layer):
         top[0].data[...] = self.data
         top[1].data[...] = self.label
 
-        self.idx += 1
-        if self.idx == len(self.chunk_size):
-            self.image = self.generator.next()
-            self.idx = 0
+        self.image = self.generator.next()
 
 
     def backward(self, top, propagate_down, bottom):
         pass
 
 
-    def load_image(self, idx):
+    def load_image(self):
         """
         Load input image and preprocess for Caffe:
         - cast to float
@@ -83,19 +83,15 @@ class DSTLSegDataLayer(caffe.Layer):
         - subtract mean
         - transpose to channel x height x width order
         """
-        im = self.image[0][idx]
+        im = self.image[0][0]
         in_ = np.array(im, dtype=np.float32)
         in_ = in_[:,:,::-1]
-        in_ = in_.transpose((2,0,1))
         return in_
 
 
-    def load_label(self, idx):
+    def load_label(self):
         """
         Load label image as 1 x height x width integer array of label indices.
         The leading singleton dimension is required by the loss.
         """
-        im = Image.open('{}/SegmentationClass/{}.png'.format(self.voc_dir, idx))
-        label = np.array(im, dtype=np.uint8)
-        label = label[np.newaxis, ...]
-        return label
+        return self.image[1]

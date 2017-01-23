@@ -13,13 +13,17 @@ import datetime
 #and the rest 9/10 are used for training
 #TODO: reserve some samples for validation (probably only when cropping is implemented).
 class Dataset():
-  def __init__(self, train=True, subset_idx_list=[], subset=-1):
+  def __init__(self, train=True, augmentation=False, subset_idx_list=[], normalize=True, subset=-1):
     if len(subset_idx_list) > 0 and subset != -1:
       raise Exception("Only idx list or subset can be -1")
 
     #Place the unziped files at this path
     self.root_path = INPUT
     self.train = train
+    self.augmentation = augmentation
+    #orig + 3 rotation + vert_flip, horizontal_flip = 6
+    self.augmentation_factor = 6
+    self.normalize = normalize
 
     #only those with annotations are training, it should be 22 images
     df = pd.read_csv(TRAIN_WKT)
@@ -55,6 +59,17 @@ class Dataset():
       "Standing water",
       "Vehicle Large",
       "Vehicle Small"]
+    self.means = np.asarray([  329.95846619,   414.74250944,   305.02988176,  3191.11093819,
+        3718.8890884 ,  3401.60485121,  3127.57398649,  2612.33625032,
+        2354.97220436,  2288.29265143,  2288.09404569,   293.54224129,
+         305.14513705,   414.94993739,   464.7065359 ,   330.15337527,
+         449.86065868,   409.28267764,   422.98811144,   451.28799937])
+
+    self.stds = [  25.21697092,   20.26343569,    9.84691434,  274.77193071,
+        319.14481443,  292.78475428,  274.8996716 ,  270.56382503,
+        236.50423548,  244.0594615 ,  255.95098918,    5.41074222,
+          9.81402107,   20.19385471,   29.7182571 ,   25.04388324,
+         36.20191917,   39.99403428,   41.28618233,   29.8104115 ]
 
   def class_id_to_name(self, id):
     return self.classes[id]
@@ -69,7 +84,7 @@ class Dataset():
     return [x_max, y_min]
 
   def get_n_samples(self, subset, crop_size):
-    return len(self.get_generator_idxs(crop_size, subset))
+    return len(self.get_generator_idxs(crop_size, subset))*self.augmentation_factor
 
   def generate_by_name(self, name):
     if name in self.image_list:
@@ -79,6 +94,8 @@ class Dataset():
     #only training images are stored in memory, test images are not
     if idx not in self.preloaded_images:
       images = self.processor.get_images(self.image_list[idx])
+      if self.normalize:
+        np.transpose((np.transpose(images, [1, 2, 0]) - self.means) / self.stds, [2, 0, 1])
       if self.train:
         masks = self.processor.get_masks(self.image_list[idx], images.shape[1], images.shape[2])
         self.preloaded_images[idx] = [images, masks]
@@ -108,6 +125,16 @@ class Dataset():
     masks_cropped = masks[:, x_begin:(x_begin+crop_size[0]), y_begin:(y_begin+crop_size[1])]
     return (image_cropped, masks_cropped)
 
+  def augment(self, im):
+    ims = np.expand_dims(im, axis=0)
+    t_im = np.transpose(im, [1, 2, 0])
+    ims = np.append(ims, np.expand_dims(np.transpose(np.rot90(t_im,1), [2, 0, 1]), axis=0), axis=0)
+    ims = np.append(ims, np.expand_dims(np.transpose(np.rot90(t_im,2), [2, 0, 1]), axis=0), axis=0)
+    ims = np.append(ims, np.expand_dims(np.transpose(np.rot90(t_im,3), [2, 0, 1]), axis=0), axis=0)
+    ims = np.append(ims, np.expand_dims(np.transpose(np.fliplr(t_im), [2, 0, 1]), axis=0), axis=0)
+    ims = np.append(ims, np.expand_dims(np.transpose(np.flipud(t_im), [2, 0, 1]), axis=0), axis=0)
+    return ims
+
   def generate_cropped(self, idxs, crop_size):
     # maybe store everything in memory
     images = None
@@ -118,12 +145,18 @@ class Dataset():
       y_begin = id[2]
 
       [im, m] = self.generate_one_cropped(image_id, crop_size, x_begin, y_begin)
-      if images is None:
-        images = np.expand_dims(im, axis=0)
-        masks = np.expand_dims(m, axis=0)
+      if self.augmentation:
+        actual_images = self.augment(im)
+        actual_masks = self.augment(m)
       else:
-        images = np.append(images, np.expand_dims(im, axis=0), axis=0)
-        masks = np.append(masks, np.expand_dims(m, axis=0), axis=0)
+        actual_images = np.expand_dims(im, axis=0)
+        actual_masks = np.expand_dims(m, axis=0)
+      if images is None:
+        images = actual_images
+        masks = actual_masks
+      else:
+        images = np.append(images, actual_images, axis=0)
+        masks = np.append(masks, actual_masks, axis=0)
 
     return [images, masks]
 
@@ -176,6 +209,10 @@ class Dataset():
 
   #set subset to val or train for the case
   def cropped_generator(self, chunk_size, crop_size, overlapping_percentage=0, subset=""):
+    if self.augmentation and chunk_size % self.augmentation_factor != 0:
+      raise Exception("chunks_size must be multiple of the dataset augemntation factor, if autmentation is enabled")
+    if self.augmentation:
+      chunk_size = chunk_size/self.augmentation_factor
     #do the same as generator, but with crops
     idx_values = self.get_generator_idxs(crop_size, subset, overlapping_percentage)
     while True:
@@ -186,11 +223,11 @@ class Dataset():
 
 
 if __name__ == '__main__':
-  d_train = Dataset(train=True)
-  generator = d_train.cropped_generator(chunk_size=10, crop_size=(224,224), overlapping_percentage=0.1, subset='train')
+  d_train = Dataset(train=True, augmentation=True)
+  generator = d_train.cropped_generator(chunk_size=12, crop_size=(224,224), overlapping_percentage=0.1, subset='train')
   for i in range(1000):
     start_time = datetime.datetime.now().time().strftime('%H:%M:%S')
     generator.next()
     end_time = datetime.datetime.now().time().strftime('%H:%M:%S')
     total_time = (datetime.datetime.strptime(end_time, '%H:%M:%S') - datetime.datetime.strptime(start_time, '%H:%M:%S'))
-    print "Time to process one batch: " +  str(total_time)
+    print "Time to process one batch: " + str(total_time)

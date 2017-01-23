@@ -1,5 +1,5 @@
 from dataset import Dataset
-from classifiers.stubclassifier import StubClassifier
+from classifiers.resnet_keras.classifier import ResnetClassifier
 import pycocotools.mask as mask
 import numpy as np
 from utils.utils import *
@@ -18,13 +18,19 @@ def generate_submission(classifier, subset=-1):
   f = open(SUBMISSION + '/submission_' + str(now).replace(" ", "_"), 'w')
   f.write(get_header() + '\n')  # python will convert \n to os.linesep
 
-  for idx in range(len(d.get_image_list())):
-    im, _ = d.generate_one(idx)
+  crop_size = classifier.get_crop_size()
+  idxs = d.get_generator_idxs(crop_size=crop_size)
+  positions_by_idx = dict()
+  for idx in idxs:
+    if idx[0] in positions_by_idx.keys():
+      positions_by_idx[idx[0]] = positions_by_idx[idx[0]].append(idx)
+    else:
+      positions_by_idx[idx[0]] = [idx]
 
-    # TODO: Maybe further reclassify polygons after main mask classifier??
-    # For example, classify between small/large vehicles by area using Decision trees,
-    # based on training samples, directly from polygons
-    masks = classifier.predict(im)
+  for idx in range(len(d.get_image_list())):
+    masks = np.zeros(d.image_sizes[idx])
+    for pos in positions_by_idx[idx]:
+      masks[:, pos[0]:pos[0]+crop_size[0], pos[1]:pos[1]+crop_size[1]] = classifier.predict(d.generate_one_cropped(idx[0], crop_size, idx[1], idx[2]))
 
     height = masks.shape[1]
     width = masks.shape[2]
@@ -47,6 +53,6 @@ def get_header():
 
 if __name__ == "__main__":
   d = Dataset(train=True, subset=1)
-  classifier = StubClassifier(d)
+  classifier = ResnetClassifier(d)
   generate_submission(classifier, subset=1)
 

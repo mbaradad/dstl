@@ -6,7 +6,7 @@ layer {
   python_param {
     module: "dstl_layers"
     layer: "DSTLDataLayer"
-    param_str: "{\'split\': \'train\', \'crop_size\': (224, 224)}"
+    param_str: "{\'split\': \'train\', \'crop_size\': (224, 224), \'chunk_size\': 16, \'overlapping_percentage\': 0.1}"
   }
 }
 layer {
@@ -486,7 +486,7 @@ layer {
     decay_mult: 0
   }
   convolution_param {
-    num_output: 21
+    num_output: 10
     pad: 0
     kernel_size: 1
   }
@@ -500,7 +500,7 @@ layer {
     lr_mult: 0
   }
   convolution_param {
-    num_output: 21
+    num_output: 10
     bias_term: false
     kernel_size: 4
     stride: 2
@@ -520,7 +520,7 @@ layer {
     decay_mult: 0
   }
   convolution_param {
-    num_output: 21
+    num_output: 10
     pad: 0
     kernel_size: 1
   }
@@ -555,7 +555,7 @@ layer {
     lr_mult: 0
   }
   convolution_param {
-    num_output: 21
+    num_output: 10
     bias_term: false
     kernel_size: 4
     stride: 2
@@ -575,7 +575,7 @@ layer {
     decay_mult: 0
   }
   convolution_param {
-    num_output: 21
+    num_output: 10
     pad: 0
     kernel_size: 1
   }
@@ -610,7 +610,7 @@ layer {
     lr_mult: 0
   }
   convolution_param {
-    num_output: 21
+    num_output: 10
     bias_term: false
     kernel_size: 16
     stride: 8
@@ -629,12 +629,10 @@ layer {
 }
 layer {
   name: "loss"
-  type: "SoftmaxWithLoss"
+  type: "SigmoidCrossEntropyLoss"
   bottom: "score"
   bottom: "label"
   top: "loss"
   loss_param {
-    ignore_label: 255
-    normalize: false
   }
 }

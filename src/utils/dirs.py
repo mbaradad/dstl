@@ -19,6 +19,12 @@ DENSNET_LASAGNE_OUTPUT = CLASSIFIERS_OUTPUT + '/densenet_lasagne'
 FCN8 = CLASSIFIERS + '/fcn8_caffe'
 FCN8_OUTPUT = CLASSIFIERS_OUTPUT+ '/caffe'
 
+FCN8_KERAS = CLASSIFIERS + '/fcn8_keras'
+FCN8_KERAS_OUTPUT = CLASSIFIERS_OUTPUT+ '/fcn8_keras'
+
+RESNET_KERAS = CLASSIFIERS + '/resnet_keras'
+RESNET_KERAS_OUTPUT = CLASSIFIERS_OUTPUT+ '/resnet_keras'
+
 
 if os.getcwd().endswith('src'):
   if not os.path.isdir(INPUT):
@@ -35,3 +41,7 @@ if os.getcwd().endswith('src'):
     os.mkdir(FCN8_OUTPUT)
   if not os.path.isdir(DENSNET_LASAGNE_OUTPUT):
     os.mkdir(DENSNET_LASAGNE_OUTPUT)
+  if not os.path.isdir(FCN8_KERAS_OUTPUT):
+    os.mkdir(FCN8_KERAS_OUTPUT)
+  if not os.path.isdir(RESNET_KERAS_OUTPUT):
+    os.mkdir(RESNET_KERAS_OUTPUT)
