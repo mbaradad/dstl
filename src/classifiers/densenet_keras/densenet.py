@@ -124,7 +124,10 @@ def create_dense_net(nb_classes, img_dim, depth=40, nb_dense_block=3, growth_rat
                             beta_regularizer=l2(weight_decay))(x)
 
     # Add dense blocks
+    # copied from tiramisu densenet
+    growth_rate_tiramisu = [2, 5, 7, 10, 12, 15]
     for block_idx in range(nb_dense_block - 1):
+        growth_rate = 2**block_idx#growth_rate_tiramisu[block_idx]
         x, nb_filter = dense_block(x, nb_layers, nb_filter, growth_rate, dropout_rate=dropout_rate,
                                    weight_decay=weight_decay)
         # add transition_block

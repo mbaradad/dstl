@@ -1,6 +1,7 @@
 from keras.engine import Layer, InputSpec
 from keras import initializations, regularizers
 from keras import backend as K
+import tensorflow as tf
 
 #!!!!Change axis to adapt for different than dim_ordering=theano and backend=tf!!!!
 class Bias(Layer):
@@ -10,7 +11,12 @@ class Bias(Layer):
     def __init__(self, axis=1, momentum = 0.9, beta_init='zero',  **kwargs):
         self.momentum = momentum
         self.axis = axis
-        self.beta_init = initializations.get(beta_init)
+        if type(beta_init) == int:
+            self.beta_factor = beta_init
+            self.beta_init = initializations.get('one')
+        else:
+            self.beta_init = initializations.get(beta_init)
+            self.beta_factor = 1
         super(Bias, self).__init__(**kwargs)
 
     def build(self, input_shape):
@@ -24,11 +30,9 @@ class Bias(Layer):
         input_shape = self.input_spec[0].shape
         broadcast_shape = [1] * len(input_shape)
         broadcast_shape[self.axis] = input_shape[self.axis]
-
-        #TODO: possibly do better than this. We have to init the bias term to a big value, and this, though ugly,
-        #does the trick
-        #ln(1 / 224 / 224) = -10.82
-        out = x + 12*K.reshape(self.beta, broadcast_shape)
+        b = K.reshape(self.beta, broadcast_shape)*self.beta_factor
+        b = tf.Print(b, [b], summarize=2000, message="bias: ")
+        out = x + b
         return out
 
     def get_config(self):

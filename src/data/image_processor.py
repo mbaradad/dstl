@@ -6,7 +6,8 @@ from utils.utils import resize
 from tifffile import tifffile
 from utils.utils import normalize_coordinates
 from PIL import Image, ImageDraw
-
+import shapely.affinity
+import cv2
 
 '''
 Classes of masks
@@ -23,7 +24,8 @@ Classes of masks
 '''
 
 class ImageProcessor():
-  def __init__(self):
+  def __init__(self, downsampling=1):
+    self.downsampling = downsampling
     self.df_wkt = pd.read_csv(TRAIN_WKT)
     self.grid_sizes = pd.read_csv(GRID_SIZES)
     self.class_types = 10
@@ -45,6 +47,7 @@ class ImageProcessor():
     #TODO: Noramlize and substract mean at this point?
     return images
 
+
   # TODO: maybe do it more efficiently, without requiring pyplot
   # though this is only done once
   # also maybe store the masks directly to disk
@@ -57,19 +60,26 @@ class ImageProcessor():
     for cType in range(self.class_types):
       #TODO: CHECK if image has been previously preprocessed, and use that, once we know for sure that there are no errors
       polygonsList = loads(image[image.ClassType == (cType + 1)].MultipolygonWKT.values[0])
+
       if len(polygonsList) == 0:
         continue
-      polygons = list()
 
       x_max = self.grid_sizes[self.grid_sizes['Unnamed: 0'] == idx].iloc[0,1]
       y_min = self.grid_sizes[self.grid_sizes['Unnamed: 0'] == idx].iloc[0,2]
 
-      img = Image.new('L', (width, height), 0)
+      polygonsList = shapely.affinity.scale(
+        polygonsList, xfact=normalize_coordinates(1, 0, height, width, x_max, y_min, )[0],
+        yfact=normalize_coordinates(0, 1, height, width, x_max, y_min, )[1],
+        origin=(0, 0, 0))
 
-      for polygon in polygonsList:
-        transformed_coordinates = [normalize_coordinates(x, y, height, width, x_max, y_min,)
-                                   for (x, y) in np.array(polygon.exterior)]
-        ImageDraw.Draw(img).polygon(transformed_coordinates, outline=1, fill=1)
+      img = np.zeros((height, width), np.uint8)
+
+      int_coords = lambda x: np.array(x).round().astype(np.int32)
+      exteriors = [int_coords(poly.exterior.coords) for poly in polygonsList]
+      interiors = [int_coords(pi.coords) for poly in polygonsList
+                   for pi in poly.interiors]
+      cv2.fillPoly(img, exteriors, 1)
+      cv2.fillPoly(img, interiors, 0)
 
       masks[cType] = np.asarray(np.expand_dims(img, 0), dtype="bool")
 

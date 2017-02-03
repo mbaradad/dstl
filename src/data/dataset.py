@@ -13,17 +13,17 @@ import datetime
 #and the rest 9/10 are used for training
 #TODO: reserve some samples for validation (probably only when cropping is implemented).
 class Dataset():
-  def __init__(self, train=True, augmentation=False, subset_idx_list=[], normalize=True, subset=-1):
-    if len(subset_idx_list) > 0 and subset != -1:
-      raise Exception("Only idx list or subset can be -1")
+  def __init__(self, train=True, augmentation=False, normalize=True, downsampling=1):
 
     #Place the unziped files at this path
     self.root_path = INPUT
     self.train = train
     self.augmentation = augmentation
     #orig + 3 rotation + vert_flip, horizontal_flip = 6
-    self.augmentation_factor = 6
+    self.augmentation_factor = 8
+    self.last_augmentation = 0
     self.normalize = normalize
+    self.downsampling = downsampling
 
     #only those with annotations are training, it should be 22 images
     df = pd.read_csv(TRAIN_WKT)
@@ -34,16 +34,23 @@ class Dataset():
       #the opposite
       self.grid_sizes = pd.read_csv(GRID_SIZES)
       all_images = self.grid_sizes['Unnamed: 0'].unique()
+      #this three are in train, but should also be included in eval
+      #TODO: maybe use groundtruth directly, to achieve small increase for the following instances
+      #self.image_list = ['6070_2_3', '6010_1_2', '6040_4_4', '6100_2_2']
+
       self.image_list = [x for x in all_images if x not in np.asarray(train_images)]
+      self.image_list.append(['6070_2_3', '6010_1_2', '6040_4_4', '6100_2_2'])
 
+      # Read the CSV into a pandas data frame (df)
+      #   With a df you can do many things
+      #   most important: visualize data with Seaborn
+      df = pd.read_csv(SAMPLE_SUBMISSION, delimiter=',')
 
-    if len(subset_idx_list) > 0:
-      self.image_list = self.image_list[subset_idx_list]
-    elif subset != -1:
-      self.image_list = self.image_list[:subset]
+      self.image_list = list(df.ix[range(0,len(df),10),0])
+
     #To store previoulsy loaded images
     self.preloaded_images = dict()
-    self.processor = ImageProcessor()
+    self.processor = ImageProcessor(downsampling=self.downsampling)
 
     self.image_sizes = []
     for idx in self.image_list:
@@ -65,11 +72,18 @@ class Dataset():
          305.14513705,   414.94993739,   464.7065359 ,   330.15337527,
          449.86065868,   409.28267764,   422.98811144,   451.28799937])
 
-    self.stds = [  25.21697092,   20.26343569,    9.84691434,  274.77193071,
+    self.stds = np.asarray([  25.21697092,   20.26343569,    9.84691434,  274.77193071,
         319.14481443,  292.78475428,  274.8996716 ,  270.56382503,
         236.50423548,  244.0594615 ,  255.95098918,    5.41074222,
           9.81402107,   20.19385471,   29.7182571 ,   25.04388324,
-         36.20191917,   39.99403428,   41.28618233,   29.8104115 ]
+         36.20191917,   39.99403428,   41.28618233,   29.8104115 ])
+
+    #percentage of zero masks for crop 224x224
+    self.zero_masks_percentage_per_class = [7.04225352e-02, 1.70496664e-02, 4.26982950e-01, 7.41289844e-04,
+                                            0.000001e+00, 3.70644922e-03, 7.62045960e-01, 7.01260193e-01, 8.85100074e-01, 5.06300964e-01]
+    #cache for test,
+    self.last_im_idx = -1
+    self.last_im = None
 
   def class_id_to_name(self, id):
     return self.classes[id]
@@ -83,8 +97,11 @@ class Dataset():
     y_min = self.grid_sizes[self.grid_sizes['Unnamed: 0'] == imname].iloc[0, 2]
     return [x_max, y_min]
 
-  def get_n_samples(self, subset, crop_size):
-    return len(self.get_generator_idxs(crop_size, subset))*self.augmentation_factor
+  def get_n_samples(self, subset, crop_size, overlapping_percentage):
+    if self.augmentation:
+      return len(self.get_generator_idxs(crop_size, subset, overlapping_percentage)) * self.augmentation_factor
+    else:
+      return len(self.get_generator_idxs(crop_size, subset, overlapping_percentage))
 
   def generate_by_name(self, name):
     if name in self.image_list:
@@ -92,18 +109,22 @@ class Dataset():
 
   def generate_one(self, idx):
     #only training images are stored in memory, test images are not
-    if idx not in self.preloaded_images:
-      images = self.processor.get_images(self.image_list[idx])
-      if self.normalize:
-        np.transpose((np.transpose(images, [1, 2, 0]) - self.means) / self.stds, [2, 0, 1])
-      if self.train:
+    if self.train:
+      if not idx in self.preloaded_images.keys():
+        images = self.processor.get_images(self.image_list[idx])
         masks = self.processor.get_masks(self.image_list[idx], images.shape[1], images.shape[2])
         self.preloaded_images[idx] = [images, masks]
+      return (self.preloaded_images[idx][0], self.preloaded_images[idx][1])
+    else:
+      # for test, don't store the images in memory, as it is not worth it (there are lots of images, and don't
+      # require preprocessing
+      if idx != self.last_im_idx:
+        images = self.processor.get_images(self.image_list[idx])
+        self.last_im = images
+        self.last_im_idx = idx
       else:
-        #for test, don't store the images in memory, as it is not worth it (there are lots of images, and don't
-        #require preprocessing
-        return [images, None]
-    return (self.preloaded_images[idx][0], self.preloaded_images[idx][1])
+        images = self.last_im
+      return [images, None]
 
   def generate(self, idxs):
     # maybe store everything in memory
@@ -122,43 +143,74 @@ class Dataset():
   def generate_one_cropped(self, idx, crop_size, x_begin, y_begin):
     [image, masks] = self.generate_one(idx)
     image_cropped = image[:, x_begin:(x_begin+crop_size[0]), y_begin:(y_begin+crop_size[1])]
-    masks_cropped = masks[:, x_begin:(x_begin+crop_size[0]), y_begin:(y_begin+crop_size[1])]
-    return (image_cropped, masks_cropped)
+    if self.train:
+      masks_cropped = masks[:, x_begin:(x_begin+crop_size[0]), y_begin:(y_begin+crop_size[1])]
+    else:
+      masks_cropped = None
+    if self.normalize:
+      image_cropped = np.transpose((np.transpose(image_cropped, [1, 2, 0]) - self.means[0:len(image_cropped)]) / self.stds[0:len(image_cropped)], [2, 0, 1])*255
 
-  def augment(self, im):
-    ims = np.expand_dims(im, axis=0)
+    #sample weights, to take into consideration cropping and zero masks, assigning more weight to non-zero for sparse classes:
+    #is_zero = np.sum(masks_cropped, axis=(1, 2)) == 0
+    #weights = (is_zero/self.zero_masks_percentage_per_class) + np.abs(is_zero - 1)/(np.ones(10) - self.zero_masks_percentage_per_class)
+    #weights = weights / np.sum(weights)*10
+    weights = np.ones(10)
+    return (image_cropped, masks_cropped, weights)
+
+  def augment(self, im, mask=False):
     t_im = np.transpose(im, [1, 2, 0])
-    ims = np.append(ims, np.expand_dims(np.transpose(np.rot90(t_im,1), [2, 0, 1]), axis=0), axis=0)
-    ims = np.append(ims, np.expand_dims(np.transpose(np.rot90(t_im,2), [2, 0, 1]), axis=0), axis=0)
-    ims = np.append(ims, np.expand_dims(np.transpose(np.rot90(t_im,3), [2, 0, 1]), axis=0), axis=0)
-    ims = np.append(ims, np.expand_dims(np.transpose(np.fliplr(t_im), [2, 0, 1]), axis=0), axis=0)
-    ims = np.append(ims, np.expand_dims(np.transpose(np.flipud(t_im), [2, 0, 1]), axis=0), axis=0)
-    return ims
+    if self.last_augmentation == 0:
+      im = im
+    elif self.last_augmentation == 1:
+      im = np.transpose(np.rot90(t_im, 1), [2, 0, 1])
+    elif self.last_augmentation == 2:
+      im = np.transpose(np.rot90(t_im,2), [2, 0, 1])
+    elif self.last_augmentation == 3:
+      im = np.transpose(np.rot90(t_im,3), [2, 0, 1])
+    elif self.last_augmentation == 4:
+      im = np.transpose(np.fliplr(t_im), [2, 0, 1])
+    elif self.last_augmentation == 5:
+      im = np.transpose(np.flipud(t_im), [2, 0, 1])
+    elif self.last_augmentation == 6:
+      im = np.transpose(np.rot90(np.flipud(t_im), 1), [2, 0, 1])
+    elif self.last_augmentation == 7:
+      im = np.transpose(np.rot90(np.fliplr(t_im), 1), [2, 0, 1])
+    if mask:
+      self.last_augmentation += 1
+    return im
 
   def generate_cropped(self, idxs, crop_size):
     # maybe store everything in memory
     images = None
     masks = None
+    weights = None
     for id in idxs:
       image_id = id[0]
       x_begin = id[1]
       y_begin = id[2]
 
-      [im, m] = self.generate_one_cropped(image_id, crop_size, x_begin, y_begin)
+      [im, m, w] = self.generate_one_cropped(image_id, crop_size, x_begin, y_begin)
       if self.augmentation:
-        actual_images = self.augment(im)
-        actual_masks = self.augment(m)
-      else:
-        actual_images = np.expand_dims(im, axis=0)
-        actual_masks = np.expand_dims(m, axis=0)
+        im = self.augment(im)
+        m = self.augment(m, mask=True)
+
+      actual_images = np.expand_dims(im, axis=0)
+      actual_masks = np.expand_dims(m, axis=0)
+      actual_weights = np.expand_dims(w, axis=0)
       if images is None:
         images = actual_images
         masks = actual_masks
+        weights = actual_weights
       else:
         images = np.append(images, actual_images, axis=0)
         masks = np.append(masks, actual_masks, axis=0)
-
-    return [images, masks]
+        weights = np.append(weights, actual_weights , axis=0)
+    not_is_zero = np.asarray(np.sum(masks, axis=(-1,-2)) != 0, dtype='float32')
+    not_is_zero_sum = np.transpose(np.reshape(np.tile(np.sum(not_is_zero, axis=-1),10),[10,16]))
+    not_is_zero_sum = not_is_zero_sum + 1*(not_is_zero_sum == 0)
+    not_is_zero = not_is_zero/not_is_zero_sum
+    #return [[images[:, 0:3, :, :], images[:, 3:, :, :]], [masks, not_is_zero], [weights, weights]]
+    return [[images[:,0:3,:,:], images[:,3:,:,:]], [masks,not_is_zero]]
 
   def generator(self, chunk_size):
     #as image_list may be small, compute chunksize replica of index to shuffle
@@ -198,7 +250,7 @@ class Dataset():
     if subset != "" and not self.train:
       raise Exception(
         "The subset (val or train) should not be specified for the test data")
-    if subset not in ['val', 'train']:
+    elif self.train and subset not in ['val', 'train']:
       raise Exception(
         "The dataset has been inizialized with training data, so the subset (val or train) should be specified.")
     if subset == 'val':
@@ -209,10 +261,6 @@ class Dataset():
 
   #set subset to val or train for the case
   def cropped_generator(self, chunk_size, crop_size, overlapping_percentage=0, subset=""):
-    if self.augmentation and chunk_size % self.augmentation_factor != 0:
-      raise Exception("chunks_size must be multiple of the dataset augemntation factor, if autmentation is enabled")
-    if self.augmentation:
-      chunk_size = chunk_size/self.augmentation_factor
     #do the same as generator, but with crops
     idx_values = self.get_generator_idxs(crop_size, subset, overlapping_percentage)
     while True:
@@ -223,11 +271,30 @@ class Dataset():
 
 
 if __name__ == '__main__':
-  d_train = Dataset(train=True, augmentation=True)
-  generator = d_train.cropped_generator(chunk_size=12, crop_size=(224,224), overlapping_percentage=0.1, subset='train')
-  for i in range(1000):
+  import matplotlib.pyplot as plt
+  d_train = Dataset(train=True, augmentation=True, normalize=True)
+  generator = d_train.cropped_generator(chunk_size=16, crop_size=(224,224), overlapping_percentage=0.2, subset='train')
+  is_zero_counts = np.zeros([10])
+  for i in range(100000):
     start_time = datetime.datetime.now().time().strftime('%H:%M:%S')
-    generator.next()
+    images, masks = generator.next()
+    is_zero_counts = is_zero_counts + np.sum(np.sum(masks, axis=(2, 3)) == 0, axis=0)/12.0
+    print is_zero_counts/(i+1)
     end_time = datetime.datetime.now().time().strftime('%H:%M:%S')
     total_time = (datetime.datetime.strptime(end_time, '%H:%M:%S') - datetime.datetime.strptime(start_time, '%H:%M:%S'))
     print "Time to process one batch: " + str(total_time)
+
+  '''
+
+  import matplotlib.pyplot as plt
+  d_train = Dataset(train=True, augmentation=True, normalize=True)
+
+  for idx in range(len(d_train.image_list)):
+    print 'storing image: ' + str(idx)
+    images, masks = d_train.generate_one(idx)
+    plt.imshow(np.transpose(images[0:3], [1, 2, 0]))
+    plt.savefig('../images/img_' + str(idx) + '.jpg')
+    for i in range(0,10):
+      plt.imshow(masks[i])
+      plt.savefig('../images/img_' + str(idx) + '_m_' + str(i) + '_' + d_train.class_id_to_name(i) +'.jpg')
+  '''

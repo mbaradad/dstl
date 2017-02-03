@@ -6,6 +6,7 @@ SIXTEEN_BAND = INPUT + '/sixteen_band'
 THREE_BAND = INPUT + '/three_band'
 TRAIN_WKT = INPUT + '/train_wkt_v4.csv'
 GRID_SIZES = INPUT + '/grid_sizes.csv'
+SAMPLE_SUBMISSION = INPUT + '/sample_submission.csv'
 
 PREPROCESSED_INPUT = '../preprocessed_input'
 OUTPUT = '../output'
@@ -25,6 +26,8 @@ FCN8_KERAS_OUTPUT = CLASSIFIERS_OUTPUT+ '/fcn8_keras'
 RESNET_KERAS = CLASSIFIERS + '/resnet_keras'
 RESNET_KERAS_OUTPUT = CLASSIFIERS_OUTPUT+ '/resnet_keras'
 
+def mkdir(dir_name):
+  os.mkdir(dir_name)
 
 if os.getcwd().endswith('src'):
   if not os.path.isdir(INPUT):
