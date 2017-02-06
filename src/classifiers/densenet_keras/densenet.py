@@ -146,3 +146,4 @@ def create_dense_net(nb_classes, img_dim, depth=40, nb_dense_block=3, growth_rat
     if verbose: print("DenseNet-%d-%d created." % (depth, growth_rate))
 
     return densenet
+

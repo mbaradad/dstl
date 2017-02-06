@@ -13,7 +13,7 @@ import datetime
 #and the rest 9/10 are used for training
 #TODO: reserve some samples for validation (probably only when cropping is implemented).
 class Dataset():
-  def __init__(self, train=True, augmentation=False, normalize=True, downsampling=1):
+  def __init__(self, train=True, augmentation=False, normalize=True, downsampling=1, ):
 
     #Place the unziped files at this path
     self.root_path = INPUT
@@ -24,6 +24,8 @@ class Dataset():
     self.last_augmentation = 0
     self.normalize = normalize
     self.downsampling = downsampling
+    self.classes_only = [6,7,8,9]
+    self.select_non_zero_instances = True
 
     #only those with annotations are training, it should be 22 images
     df = pd.read_csv(TRAIN_WKT)
@@ -148,7 +150,7 @@ class Dataset():
     else:
       masks_cropped = None
     if self.normalize:
-      image_cropped = np.transpose((np.transpose(image_cropped, [1, 2, 0]) - self.means[0:len(image_cropped)]) / self.stds[0:len(image_cropped)], [2, 0, 1])*255
+      image_cropped = np.transpose((np.transpose(image_cropped, [1, 2, 0]) - self.means[0:len(image_cropped)]) / self.stds[0:len(image_cropped)], [2, 0, 1])*255.0
 
     #sample weights, to take into consideration cropping and zero masks, assigning more weight to non-zero for sparse classes:
     #is_zero = np.sum(masks_cropped, axis=(1, 2)) == 0
@@ -210,7 +212,7 @@ class Dataset():
     not_is_zero_sum = not_is_zero_sum + 1*(not_is_zero_sum == 0)
     not_is_zero = not_is_zero/not_is_zero_sum
     #return [[images[:, 0:3, :, :], images[:, 3:, :, :]], [masks, not_is_zero], [weights, weights]]
-    return [[images[:,0:3,:,:], images[:,3:,:,:]], [masks,not_is_zero]]
+    return [[images[:,0:3,:,:], images[:,3:,:,:]], masks]
 
   def generator(self, chunk_size):
     #as image_list may be small, compute chunksize replica of index to shuffle
@@ -263,22 +265,54 @@ class Dataset():
   def cropped_generator(self, chunk_size, crop_size, overlapping_percentage=0, subset=""):
     #do the same as generator, but with crops
     idx_values = self.get_generator_idxs(crop_size, subset, overlapping_percentage)
+    to_yield = list()
+    good_idx_found = False
     while True:
       random.shuffle(idx_values)
+      good_idx = list()
       for i in range(len(idx_values) / chunk_size):
         idxs = idx_values[i * chunk_size:(i + 1) * chunk_size]
-        yield self.generate_cropped(idxs, crop_size)
+        if good_idx_found or not self.select_non_zero_instances:
+          yield self.generate_cropped(idxs, crop_size)
+        else:
+          actual = self.generate_cropped(idxs, crop_size)
+          not_is_zero = np.sum(actual[1][:,self.classes_only], axis=(-1,-2,-3)) != 0
+          for i in range(len(not_is_zero)):
+            if not_is_zero[i]:
+              to_yield.append([[actual[0][0][i], actual[0][1][i]], actual[1][i]])
+              good_idx.append(idxs[i])
+          if len(to_yield) > 16:
+            actual_yield = to_yield[:16]
+            to_yield = to_yield[16:]
+            images = np.expand_dims(actual_yield[0][0][0],axis=0)
+            channels = np.expand_dims(actual_yield[0][0][1],axis=0)
+            masks = np.expand_dims(actual_yield[0][1],axis=0)
+            for i in range(1,16):
+              images = np.append(images, np.expand_dims(actual_yield[i][0][0],axis=0), axis=0)
+              channels = np.append(channels, np.expand_dims(actual_yield[i][0][1],axis=0), axis=0)
+              masks = np.append(masks, np.expand_dims(actual_yield[i][1],axis=0), axis=0)
+            yield [[images, channels],masks]
 
+      if not good_idx_found and self.select_non_zero_instances:
+        idx_values = good_idx
+        print 'GOOOOOOOOOOOOD IDX OF GENERATOR FOUND. SHOULD SPEED UP NOW, check wnvidia'
+        print 'number of instances without augmentation: ' + str(len(idx_values))
+        good_idx_found = True
 
 if __name__ == '__main__':
   import matplotlib.pyplot as plt
   d_train = Dataset(train=True, augmentation=True, normalize=True)
   generator = d_train.cropped_generator(chunk_size=16, crop_size=(224,224), overlapping_percentage=0.2, subset='train')
   is_zero_counts = np.zeros([10])
+  area = np.zeros([10])
   for i in range(100000):
     start_time = datetime.datetime.now().time().strftime('%H:%M:%S')
     images, masks = generator.next()
-    is_zero_counts = is_zero_counts + np.sum(np.sum(masks, axis=(2, 3)) == 0, axis=0)/12.0
+    area = area + np.sum(masks, axis=(0,-1,-2))
+    print 'total_area =' + str(area/((i+1)*16*224*224))
+    is_zero_counts = is_zero_counts + np.sum(np.sum(masks, axis=(2, 3)) == 0, axis=0)/16.0
+    if is_zero_counts[9] != 1.0:
+      print 'car_found'
     print is_zero_counts/(i+1)
     end_time = datetime.datetime.now().time().strftime('%H:%M:%S')
     total_time = (datetime.datetime.strptime(end_time, '%H:%M:%S') - datetime.datetime.strptime(start_time, '%H:%M:%S'))

@@ -33,12 +33,12 @@ import matplotlib.pyplot as plt
 from keras.layers.core import Dense
 
 if __name__ == "__main__":
-  os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+  os.environ["CUDA_VISIBLE_DEVICES"] = "0"
   gpu_options = tf.GPUOptions(allow_growth=True)
   sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options))
   with sess.as_default():
-    model_file = dirs.RESNET_KERAS_OUTPUT + "/execution_2017-02-0319:31:29.134917/model"
-    model = create_model(finetune=True, bias_trainable=False)
+    model_file = dirs.RESNET_KERAS_OUTPUT + "/execution_2017-02-0522:45:13.047588/model"
+    model = create_model(finetune=False, bias_trainable=False)
 
     timestamp = str(datetime.datetime.now())
 
@@ -61,13 +61,13 @@ if __name__ == "__main__":
     api_token = os.getenv('TELEGRAM_API_TOKEN')
     tm = TelegramMonitor(api_token=api_token, chat_id=api_chat_id)
 
-    opt = Adam(lr=0.0001, beta_1=0.9, beta_2=0.999,
-                     epsilon=1e-8, decay=0.001)
+    opt = Adam(lr=0.00001, beta_1=0.9, beta_2=0.999,
+                     epsilon=1e-8)
+
 
 
     # to be used when both classes and masks are being predicted
-    model.compile(optimizer=opt, loss={'mask_output': iou_loss, 'fc_is_zero': binary_cross_entropy_loss},
-                  loss_weights={'mask_output': 0.5, 'fc_is_zero': 0.5})
+    model.compile(optimizer=opt, loss={'mask_output': iou_loss})
     d = Dataset(train=True, augmentation=True)
 
     model.load_weights(model_file + '.h5')
@@ -78,8 +78,8 @@ if __name__ == "__main__":
     open(save_path + '/model.json', 'w').write(json_string)
     #Fixed samples per epoch to force model save
     #instead of d.get_n_samples(subset='train', crop_size=(224, 224)
-    model.fit_generator(generator_train, nb_epoch=500, samples_per_epoch=16000,
-                        validation_data=generator_val, nb_val_samples=d.get_n_samples(subset='val', crop_size=(224,224), overlapping_percentage=0.5),
+    model.fit_generator(generator_train, nb_epoch=200, samples_per_epoch=16000,
+                        validation_data=generator_val, nb_val_samples=1600,
                         callbacks=[mc, ep, tb, tm])
 
 

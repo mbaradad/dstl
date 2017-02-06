@@ -27,9 +27,10 @@ from classifiers.densenet_keras.densenet import create_dense_net
 from classifiers.fcn8_keras.custom_layers.bias import Bias
 import sys
 from keras.applications.inception_v3 import InceptionV3
+from keras.layers.advanced_activations import LeakyReLU
 
 
-def create_model(finetune=True, bias_trainable=False):
+def create_model(finetune=False, bias_trainable=False):
   chunk_size = 16
   image_height = 224
   image_width = 224
@@ -83,7 +84,7 @@ def create_model(finetune=True, bias_trainable=False):
   skip_candidates = dict()
   skip_scale_init_weight = 0.1
   if(features_model_name == 'resnet_101'):
-      skip_candidates['224'] = features_model.input
+      #skip_candidates['224'] = features_model.input
       skip_candidates['112'] = features_model.get_layer('conv1_relu').output
       skip_candidates['56'] = ZeroPadding2D(padding=(1,0,1,0))(features_model.get_layer('res2c_relu').output)
       skip_candidates['28'] = features_model.get_layer('res3b3_relu').output
@@ -93,7 +94,7 @@ def create_model(finetune=True, bias_trainable=False):
       skip_candidates = add_skip_network(skip_candidates, hidden_dim, feat_size, skip_scale_init_weight)
 
   elif (features_model_name == 'resnet_152'):
-    skip_candidates['224'] = features_model.input
+    #skip_candidates['224'] = features_model.input
     skip_candidates['112'] = features_model.get_layer('conv1_relu').output
     skip_candidates['56'] = ZeroPadding2D(padding=(1, 0, 1, 0))(features_model.get_layer('res2c_relu').output)
     skip_candidates['28'] = features_model.get_layer('res3b7_relu').output
@@ -103,7 +104,7 @@ def create_model(finetune=True, bias_trainable=False):
     skip_candidates = add_skip_network(skip_candidates, hidden_dim, feat_size, skip_scale_init_weight)
 
   elif(features_model_name == 'resnet_keras'):
-      skip_candidates['224'] = features_model.input
+      #skip_candidates['224'] = features_model.input
       skip_candidates['112'] = features_model.get_layer('activation_1').output
       skip_candidates['56'] = ZeroPadding2D(padding=(1,0,1,0))(features_model.get_layer('activation_10').output)
       skip_candidates['28'] = features_model.get_layer('activation_22').output
@@ -115,37 +116,33 @@ def create_model(finetune=True, bias_trainable=False):
   # Deconv layers
   pre_hidden_dim = get_num_dimension_per_features_map_size(feat_size, feat_size, hidden_dim)
 
-
-  flatten = Flatten(name='flatten_fc_is_zero')(features_output)
-  flatten = Reshape([4096 * 7 * 7], name='reshape_fc_is_zero')(flatten)
-  flatten = Dropout(0.5)(flatten)
-  fc_layer = Dense(10, activation='softmax', name='fc_is_zero')(flatten)
-
   a = Convolution2D(pre_hidden_dim, filter_dim, filter_dim, border_mode='same')(features_output)  # (10,224,224)
   a = BatchNormalization()(a)
   for i in range(int(log(image_height/feat_size, 2))):
       # at each iteration (tsteps,256,*=2,*=2)
       actual_size = feat_size * 2**i
-      #Because deconvolution requires output_shape before the call(), we perform # params['chunk_size']*tsteps convolutions
+      #Because deconvoldution requires output_shape before the call(), we perform # params['chunk_size']*tsteps convolutions
       #deconv_hidden_dim = hidden_dim/2**i
       if str(actual_size) in skip_candidates.keys():
           actual_skip = skip_candidates[str(actual_size)]
-          a = Merge(mode='sum', name='merge_deconv_res_' +str(i))([actual_skip, a])
-          a = Activation('relu')(a)
+          a = Merge(mode='concat', name='merge_deconv_res_' +str(i), concat_axis=1)([actual_skip, a])
+          #a = Activation('relu')(a)
           a = BatchNormalization()(a)
       else:
         print "Some skipped candidates couldn't be fetched (this is normal when not using resnet). Check dettention.py for skip candidates definition"
       deconv_hidden_dim = get_num_dimension_per_features_map_size(actual_size*2, feat_size, hidden_dim)
-      b = Deconvolution2D(deconv_hidden_dim,filter_dim,filter_dim,
-                          (chunk_size, deconv_hidden_dim,feat_size*2**(i+1), feat_size*2**(i+1))
-                          , border_mode='same', subsample=(2,2), bias=False, input_shape=(chunk_size, pre_hidden_dim, feat_size*2**(i), feat_size*2**(i)))(a)
-      pre_hidden_dim = deconv_hidden_dim
-      a = Activation('relu')(b)
+      #b = Deconvolution2D(deconv_hidden_dim,filter_dim,filter_dim,
+      #                    (chunk_size, deconv_hidden_dim,feat_size*2**(i+1), feat_size*2**(i+1))
+      #                    , border_mode='same', subsample=(2,2), bias=False, input_shape=(chunk_size, pre_hidden_dim*2, feat_size*2**(i), feat_size*2**(i)))(a)
+      a = UpSampling2D(size=(2, 2))(a)
+      a = Convolution2D(deconv_hidden_dim, 3, 3, border_mode='same')(a)
+      #pre_hidden_dim = deconv_hidden_dim
+      #a = Activation('relu')(a)
       a = BatchNormalization()(a)
 
-  a = Convolution2D(pre_hidden_dim,filter_dim,filter_dim,border_mode='same')(a) # (10,224,224)
-  a = BatchNormalization(name='bn_end_1')(a)
-  a = Activation('relu')(a)
+  #a = Convolution2D(pre_hidden_dim,filter_dim,filter_dim,border_mode='same')(a) # (10,224,224)
+  #a = BatchNormalization(name='bn_end_1')(a)
+  #a = Activation('relu')(a)
   a = Convolution2D(10, filter_dim, filter_dim, border_mode='same')(a)  # (10,224,224)
   #a = BatchNormalization(name='bn_end')(a)
 
@@ -154,15 +151,14 @@ def create_model(finetune=True, bias_trainable=False):
   #a = Reshape([10, w*h])(a)
   #a = Activation('softmax')(a)
   #a = Lambda(lambda x: K.log(K.clip(x, 1e-6, 1 - 1e-6)))(a)
-  #Change for a simple bias, instead of a conv
   #if not bias_trainable:
   #  a = Bias(beta_init=11, trainable=False)(a)
-    #else:
+  #else:
   #  a = Bias(beta_init=11)(a)
-    #a = Reshape([10, w,h])(a)
+  #a = Reshape([10, w,h])(a)
   masks = Activation('sigmoid', name='mask_output')(a)
 
-  model = Model(input=[features_input, other_ch],output=[masks,fc_layer])
+  model = Model(input=[features_input, other_ch],output=[masks], name='dstl')
   return model
 
 def add_skip_network(skip_candidates, hidden_dims, feat_size, skip_scale_init_weight):
@@ -185,11 +181,11 @@ def get_num_dimension_per_features_map_size(size, feat_size, hidden_dim):
 
 
 if __name__ == "__main__":
-  #os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+  os.environ["CUDA_VISIBLE_DEVICES"] = "0"
   gpu_options = tf.GPUOptions(allow_growth=True)
   sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options))
   with sess.as_default():
-    model = create_model(finetune=True)
+    model = create_model(finetune=False, bias_trainable=True)
 
     timestamp = str(datetime.datetime.now())
 
@@ -213,21 +209,20 @@ if __name__ == "__main__":
     api_token = os.getenv('TELEGRAM_API_TOKEN')
     tm = TelegramMonitor(api_token=api_token, chat_id=api_chat_id)
 
-    opt = Adam(lr=0.01, beta_1=0.9, beta_2=0.999,
-                     epsilon=1e-8, decay=0.001)
+    opt = Adam(lr=0.0001, beta_1=0.9, beta_2=0.999,
+                     epsilon=1e-8)
 
 
     # to be used when both classes and masks are being predicted
-    model.compile(optimizer=opt, loss={'mask_output': iou_loss, 'fc_is_zero': binary_cross_entropy_loss},
-                  loss_weights={'mask_output': 1, 'fc_is_zero': 0})
+    model.compile(optimizer=opt, loss={'mask_output': iou_loss})
     d = Dataset(train=True, augmentation=True)
 
-    generator_train = d.cropped_generator(chunk_size=16, crop_size=(224,224), overlapping_percentage=0.1, subset='train')
-    generator_val = d.cropped_generator(chunk_size=16, crop_size=(224,224), overlapping_percentage=0.1, subset='val')
+    generator_train = d.cropped_generator(chunk_size=16, crop_size=(224,224), overlapping_percentage=0.5, subset='train')
+    generator_val = d.cropped_generator(chunk_size=16, crop_size=(224,224), overlapping_percentage=0.5, subset='val')
     json_string = model.to_json()
     open(save_path + '/model.json', 'w').write(json_string)
     #Fixed samples per epoch to force model save
     #instead of d.get_n_samples(subset='train', crop_size=(224, 224)
     model.fit_generator(generator_train, nb_epoch=500, samples_per_epoch=16000,
-                        validation_data=generator_val, nb_val_samples=d.get_n_samples(subset='val', crop_size=(224,224), overlapping_percentage=0.1),
-                        callbacks=[mc, ep, tb, tm])
+                        validation_data=generator_val, nb_val_samples=1600,
+                        callbacks=[mc, ep, tb, tm], max_q_size=100)

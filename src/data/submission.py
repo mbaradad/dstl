@@ -32,8 +32,11 @@ def calc_precision(x, y):
   return max(power_x, power_y)
 
 def generate_submission(classifier, generate_images=False):
-  kernel_closings = [5, 5, 5, 20, 10, 5, 5, 5, 1, 1]
-  kernel_openings = [5, 5, 5, 20, 10, 5, 5, 5, 1, 1]
+  #kernel_closings = [5, 5, 5, 5, 10, 5, 5, 5, 1, 1]
+  #kernel_openings = [5, 5, 5, 5, 10, 5, 5, 5, 1, 1]
+
+  kernel_closings = [5, 0, 5, 0, 10, 10, 0, 0, 0, 0]
+  kernel_openings = [5, 0, 5, 0, 10, 10, 0, 0, 0, 0]
 
   d = Dataset(train=False)
   now = datetime.datetime.now()
@@ -130,10 +133,11 @@ def generate_submission(classifier, generate_images=False):
 
 
       actual_mask = np.asarray(masks[i], dtype='uint8')
-      kernel_close = np.ones((kernel_closings[i], kernel_closings[i]), np.uint8)
-      actual_mask = cv2.morphologyEx(actual_mask, cv2.MORPH_CLOSE, kernel_close)
-      kernel_open = np.ones((kernel_openings[i], kernel_openings[i]), np.uint8)
-      actual_mask = cv2.morphologyEx(actual_mask, cv2.MORPH_OPEN, kernel_open)
+      if kernel_closings[i] != 0:
+        kernel_close = np.ones((kernel_closings[i], kernel_closings[i]), np.uint8)
+        actual_mask = cv2.morphologyEx(actual_mask, cv2.MORPH_CLOSE, kernel_close)
+        kernel_open = np.ones((kernel_openings[i], kernel_openings[i]), np.uint8)
+        actual_mask = cv2.morphologyEx(actual_mask, cv2.MORPH_OPEN, kernel_open)
       #print 'Computing cv2 open/close'
       if idx < 4 and generate_images:
         print 'Storing masks'
@@ -272,6 +276,6 @@ def get_header():
 
 if __name__ == "__main__":
   os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-  classifier = ResnetClassifier(RESNET_KERAS_OUTPUT + "/execution_2017-02-0111:41:57.744795/model.h5")
-  generate_submission(classifier, generate_images=False)
+  classifier = ResnetClassifier(RESNET_KERAS_OUTPUT + "/execution_2017-02-0522:45:13.047588/model.h5")
+  generate_submission(classifier, generate_images=True)
 
