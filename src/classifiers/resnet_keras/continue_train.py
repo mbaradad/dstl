@@ -33,12 +33,12 @@ import matplotlib.pyplot as plt
 from keras.layers.core import Dense
 
 if __name__ == "__main__":
-  os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+  os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
   gpu_options = tf.GPUOptions(allow_growth=True)
   sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options))
   with sess.as_default():
-    model_file = dirs.RESNET_KERAS_OUTPUT + "/execution_2017-02-0522:45:13.047588/model"
-    model = create_model(finetune=False, bias_trainable=False)
+    model_file = dirs.RESNET_KERAS_OUTPUT + "/execution_2017-02-0711:32:18.472465/model"
+    model = create_model(finetune=True)
 
     timestamp = str(datetime.datetime.now())
 
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     api_token = os.getenv('TELEGRAM_API_TOKEN')
     tm = TelegramMonitor(api_token=api_token, chat_id=api_chat_id)
 
-    opt = Adam(lr=0.00001, beta_1=0.9, beta_2=0.999,
+    opt = Adam(lr=0.00005, beta_1=0.9, beta_2=0.999,
                      epsilon=1e-8)
 
 
@@ -81,5 +81,9 @@ if __name__ == "__main__":
     model.fit_generator(generator_train, nb_epoch=200, samples_per_epoch=16000,
                         validation_data=generator_val, nb_val_samples=1600,
                         callbacks=[mc, ep, tb, tm])
+
+    #model.fit_generator(generator_train, nb_epoch=200, samples_per_epoch=16000,
+    #                    validation_data=generator_val, nb_val_samples=1600,
+    #                    callbacks=[mc, ep, tb, tm])
 
 

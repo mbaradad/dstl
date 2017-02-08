@@ -25,6 +25,7 @@ from rasterio.features import shapes
 from shapely.geometry import shape
 import math
 
+
 def calc_precision(x, y):
   if not x: return 0
   power_x = -int(math.floor(math.log10(abs(x))))
@@ -35,12 +36,18 @@ def generate_submission(classifier, generate_images=False):
   #kernel_closings = [5, 5, 5, 5, 10, 5, 5, 5, 1, 1]
   #kernel_openings = [5, 5, 5, 5, 10, 5, 5, 5, 1, 1]
 
-  kernel_closings = [5, 0, 5, 0, 10, 10, 0, 0, 0, 0]
-  kernel_openings = [5, 0, 5, 0, 10, 10, 0, 0, 0, 0]
+  #Better to process afterwards
+  kernel_closings = [5, 5, 10, 20, 10, 10, 10, 10, 10, 10]
+  kernel_openings = [10, 6, 7, 7, 10, 10, 2, 2, 2, 2]
+  #kernel_closings = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  #kernel_openings = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+  masks_from_previous_df = [0,1,2,3,4,5,6,7,8]
 
   d = Dataset(train=False)
   now = datetime.datetime.now()
   f = open(SUBMISSION + '/submission_' + str(now).replace(" ", "_") + '.csv', 'w')
+  f_original = open(SUBMISSION + '/submission_' + str(now).replace(" ", "_") + '_original.csv', 'w')
   images_dir = SUBMISSION + '/submission_' + str(now).replace(" ", "_")
   if generate_images:
     mkdir(images_dir)
@@ -74,7 +81,6 @@ def generate_submission(classifier, generate_images=False):
     continue
     '''
 
-
     masks = np.zeros([10, d.image_sizes[idx][0], d.image_sizes[idx][1]], dtype=bool)
     d.generate_one(idx)
     if idx < 4 and generate_images:
@@ -99,14 +105,16 @@ def generate_submission(classifier, generate_images=False):
     height = masks.shape[1]
     width = masks.shape[2]
     [x_max, y_min] = d.get_grid_size(idx)
-    #open and close masks to simplify image:    kernel = np.ones((10, 10), np.uint8)
-    #for i in range(len(masks)):
     for i in range(len(masks)):
       print 'Computing mask' + str(i + 1)
+      '''
+      if i in masks_from_previous_df:
+        print 'Mask ' + str(i + 1) + 'from df'
+        f.write(",".join([str(df.ix[idx*10+i][0]), str(df.ix[idx*10+i][1]), '"' + str(df.ix[idx*10+i][2]) + '"']) + '\n')
       if idx < 4 and generate_images:
         plt.imshow(masks[i])
         plt.savefig(images_dir +'/img_' + str(idx) + '_m_' + str(i) + '_' + d.class_id_to_name(i) +'.jpg')
-      '''
+
       My method, changed f
       actual_mask = cv2.morphologyEx(np.asarray(masks[i], dtype='float32'), cv2.MORPH_OPEN, kernel)
       actual_mask = cv2.morphologyEx(actual_mask, cv2.MORPH_OPEN, kernel)
@@ -131,8 +139,12 @@ def generate_submission(classifier, generate_images=False):
       #with 10, 3 mb per image
       #with 5, 7mb per image
 
-
+      np.save(images_dir +'/mask_' + d.get_image_list()[idx] + '_' + str(i) + '.h5', masks[i])
       actual_mask = np.asarray(masks[i], dtype='uint8')
+
+      polygons = mask_to_polygons_rasterio(actual_mask)
+      f_original.write(d.get_image_list()[idx] + ',' + str(i + 1) + ',"' + shapely.wkt.dumps(polygons) + '"\n')
+
       if kernel_closings[i] != 0:
         kernel_close = np.ones((kernel_closings[i], kernel_closings[i]), np.uint8)
         actual_mask = cv2.morphologyEx(actual_mask, cv2.MORPH_CLOSE, kernel_close)
@@ -161,8 +173,16 @@ def generate_submission(classifier, generate_images=False):
         yfact=normal_coordinates_to_dataset_coordinates(0, 1, height, width, x_max, y_min)[1],
         origin=(0, 0, 0))
 
-      precision = calc_precision(normal_coordinates_to_dataset_coordinates(1, 0, height, width, x_max, y_min)[0], normal_coordinates_to_dataset_coordinates(0, 1, height, width, x_max, y_min)[1])
+
+      #for rounding, which is necessary to avoid eval errors
+      precision = calc_precision(normal_coordinates_to_dataset_coordinates(1, 0, height, width, x_max, y_min)[0],
+                                 normal_coordinates_to_dataset_coordinates(0, 1, height, width, x_max, y_min)[1])
+
       f.write(d.get_image_list()[idx] + ',' + str(i + 1) + ',"' + shapely.wkt.dumps(multiPolygon, rounding_precision=precision+1) + '"\n')
+      #f.write(d.get_image_list()[idx] + ',' + str(i + 1) + ',"' + shapely.wkt.dumps(multiPolygon) + '"\n')
+    #for i in range(len(masks)):
+    #open and close masks to simplify image:    kernel = np.ones((10, 10), np.uint8)
+
 
   f.close()
 

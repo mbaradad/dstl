@@ -51,16 +51,16 @@ def iou_loss(y_true, y_pred):
   #weights = weights / K.sum(weights) * 10*16
 
   #use iou when groundtruth not zero and l1 to zero when it is zero, and add proportional weights, to account for both
-  actual_cost = (1 - iou) #* not_is_zero + is_zero*K.sum(K.abs(y_pred), axis=[-2,-1])/224/224
+  #actual_cost = (1 - iou) #* not_is_zero + is_zero*K.sum(K.abs(y_pred), axis=[-2,-1])/224/224
 
   actual_cost = K.mean(K.binary_crossentropy(y_pred, y_true), axis=[-1,-2])
   actual_cost = tf.Print(actual_cost, [l1_true[0, :]], summarize=2000, message="l1 of y_true: ")
   actual_cost = tf.Print(actual_cost, [K.sum(K.abs(y_pred), axis=[-2,-1])[0, :]], summarize=2000, message="l1 of y_pred: ")
-  actual_cost = tf.Print(actual_cost, [actual_cost[0, :]], summarize=2000,message="loss for sample 0: ")
+  actual_cost = tf.Print(actual_cost, [K.mean(K.binary_crossentropy(y_pred, y_true), axis=[-1,-2])[0, :]], summarize=2000,message="loss for sample 0: ")
   actual_cost = tf.Print(actual_cost, [(iou)[0, :]], summarize=2000, message="weighted_loss for sample 0: ")
 
 
-  return actual_cost*[0,0,0,0,0,0,1,1,1,1]
+  return actual_cost#*[0,0,0,0,0,0,0,0,0,1]
   #return actual_cost
   #return 1 - K.sqrt(actual_cost)
 

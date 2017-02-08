@@ -13,7 +13,7 @@ import datetime
 #and the rest 9/10 are used for training
 #TODO: reserve some samples for validation (probably only when cropping is implemented).
 class Dataset():
-  def __init__(self, train=True, augmentation=False, normalize=True, downsampling=1, ):
+  def __init__(self, train=True, augmentation=False, normalize=True, downsampling=1):
 
     #Place the unziped files at this path
     self.root_path = INPUT
@@ -24,8 +24,8 @@ class Dataset():
     self.last_augmentation = 0
     self.normalize = normalize
     self.downsampling = downsampling
-    self.classes_only = [6,7,8,9]
-    self.select_non_zero_instances = True
+    #self.classes_only = [9]
+    self.select_non_zero_instances = False
 
     #only those with annotations are training, it should be 22 images
     df = pd.read_csv(TRAIN_WKT)
@@ -274,6 +274,7 @@ class Dataset():
         idxs = idx_values[i * chunk_size:(i + 1) * chunk_size]
         if good_idx_found or not self.select_non_zero_instances:
           yield self.generate_cropped(idxs, crop_size)
+          continue
         else:
           actual = self.generate_cropped(idxs, crop_size)
           not_is_zero = np.sum(actual[1][:,self.classes_only], axis=(-1,-2,-3)) != 0
@@ -293,7 +294,7 @@ class Dataset():
               masks = np.append(masks, np.expand_dims(actual_yield[i][1],axis=0), axis=0)
             yield [[images, channels],masks]
 
-      if not good_idx_found and self.select_non_zero_instances:
+      if not good_idx_found and self.select_non_zero_instances and len(good_idx) > 0:
         idx_values = good_idx
         print 'GOOOOOOOOOOOOD IDX OF GENERATOR FOUND. SHOULD SPEED UP NOW, check wnvidia'
         print 'number of instances without augmentation: ' + str(len(idx_values))
