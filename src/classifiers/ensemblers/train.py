@@ -48,12 +48,17 @@ def create_model():
   return Model(input=input, output=a)
 
 
+def big_generator():
+  d = Dataset(train=True)
+  #while True:
+
 
 if __name__ == "__main__":
   os.environ["CUDA_VISIBLE_DEVICES"] = "1"
   gpu_options = tf.GPUOptions(allow_growth=True)
   sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options))
   with sess.as_default():
+    model_0 = load_model(dirs.RESNET_KERAS_OUTPUT + "execution_2017-02-0820:09:59.765910/model.h5")
 
     model = create_model()
 

@@ -14,7 +14,7 @@ import warnings
 
 from keras.layers import merge, Input
 from keras.layers import Dense, Activation, Flatten
-from keras.layers import Convolution2D, MaxPooling2D, ZeroPadding2D, AveragePooling2D, AtrousConv2D, Reshape
+from keras.layers import Convolution2D, MaxPooling2D, ZeroPadding2D, AveragePooling2D
 from keras.layers import BatchNormalization
 from keras.models import Model
 from keras import backend as K
@@ -29,47 +29,6 @@ TF_WEIGHTS_PATH = 'https://github.com/fchollet/deep-learning-models/releases/dow
 TH_WEIGHTS_PATH_NO_TOP = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.2/resnet50_weights_th_dim_ordering_th_kernels_notop.h5'
 TF_WEIGHTS_PATH_NO_TOP = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.2/resnet50_weights_tf_dim_ordering_tf_kernels_notop.h5'
 
-def identity_block_atrous(input_tensor, kernel_size, filters, stage, block):
-    """The identity_block is the block that has no conv layer at shortcut
-
-    # Arguments
-        input_tensor: input tensor
-        kernel_size: defualt 3, the kernel size of middle conv layer at main path
-        filters: list of integers, the nb_filters of 3 conv layer at main path
-        stage: integer, current stage label, used for generating layer names
-        block: 'a','b'..., current block label, used for generating layer names
-    """
-    nb_filter1, nb_filter2, nb_filter3 = filters
-    if K.image_dim_ordering() == 'tf':
-        bn_axis = 3
-    else:
-        bn_axis = 1
-    conv_name_base = 'res' + str(stage) + block + '_branch'
-    bn_name_base = 'bn' + str(stage) + block + '_branch'
-    in_shape = (int(input_tensor.get_shape()[1]), int(input_tensor.get_shape()[2]), int(input_tensor.get_shape()[3]))
-    x = Convolution2D(nb_filter1, 1, 1, border_mode='same', name='other' + conv_name_base + '2a')(input_tensor)
-    x = Reshape([int(x.get_shape()[1]), int(input_tensor.get_shape()[2]), int(input_tensor.get_shape()[3])])(x)
-
-    x = BatchNormalization(axis=bn_axis, name='other' + bn_name_base + '2a')(x)
-    x = Activation('relu')(x)
-
-    in_shape = (int(x.get_shape()[1]), int(x.get_shape()[2]), int(x.get_shape()[3]))
-    x = AtrousConv2D(nb_filter2, kernel_size, kernel_size, atrous_rate=(2,2),
-                      name='other' + conv_name_base + '2b', input_shape=in_shape, border_mode='same')(x)
-    x = Reshape([int(x.get_shape()[1]), int(input_tensor.get_shape()[2]), int(input_tensor.get_shape()[3])])(x)
-
-    x = BatchNormalization(axis=bn_axis, name='other' + bn_name_base + '2b')(x)
-    x = Activation('relu')(x)
-
-    in_shape = (int(x.get_shape()[1]), int(x.get_shape()[2]), int(x.get_shape()[3]))
-    x = AtrousConv2D(nb_filter3, 1, 1, atrous_rate=(2,2), name='other' + conv_name_base + '2c', input_shape=in_shape, border_mode='same')(x)
-    x = Reshape([int(x.get_shape()[1]), int(input_tensor.get_shape()[2]), int(input_tensor.get_shape()[3])])(x)
-
-    x = BatchNormalization(axis=bn_axis, name='other' + bn_name_base + '2c')(x)
-
-    x = merge([x, input_tensor], mode='sum')
-    x = Activation('relu')(x)
-    return x
 
 def identity_block(input_tensor, kernel_size, filters, stage, block):
     """The identity_block is the block that has no conv layer at shortcut
@@ -149,64 +108,6 @@ def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2, 2))
     return x
 
 
-def conv_block_atrous(input_tensor, kernel_size, filters, stage, block, strides=(1, 1)):
-    """conv_block is the block that has a conv layer at shortcut
-
-    # Arguments
-        input_tensor: input tensor
-        kernel_size: defualt 3, the kernel size of middle conv layer at main path
-        filters: list of integers, the nb_filters of 3 conv layer at main path
-        stage: integer, current stage label, used for generating layer names
-        block: 'a','b'..., current block label, used for generating layer names
-
-    Note that from stage 3, the first conv layer at main path is with subsample=(2,2)
-    And the shortcut should have subsample=(2,2) as well
-    """
-    nb_filter1, nb_filter2, nb_filter3 = filters
-    if K.image_dim_ordering() == 'tf':
-        bn_axis = 3
-    else:
-        bn_axis = 1
-    conv_name_base = 'res' + str(stage) + block + '_branch'
-    bn_name_base = 'bn' + str(stage) + block + '_branch'
-
-    x = input_tensor
-    in_shape = (int(x.get_shape()[1]), int(x.get_shape()[2]), int(x.get_shape()[3]))
-    x = Convolution2D(nb_filter1, 1, 1, subsample=strides,
-                      name='other'+conv_name_base + '2a', border_mode='same', input_shape=in_shape)(input_tensor)
-    x = Reshape([int(x.get_shape()[1]), int(input_tensor.get_shape()[2]), int(input_tensor.get_shape()[3])])(x)
-    x = BatchNormalization(axis=bn_axis, name='other'+bn_name_base + '2a')(x)
-    x = Activation('relu')(x)
-
-    in_shape = (int(x.get_shape()[1]), int(x.get_shape()[2]), int(x.get_shape()[3]))
-    x = AtrousConv2D(nb_filter2, kernel_size, kernel_size,
-                      name='other'+conv_name_base + '2b',atrous_rate=(2,2), input_shape=in_shape, border_mode='same')(x)
-    x = Reshape([int(x.get_shape()[1]), int(input_tensor.get_shape()[2]), int(input_tensor.get_shape()[3])])(x)
-
-    x = BatchNormalization(axis=bn_axis, name='other'+bn_name_base + '2b')(x)
-    x = Activation('relu')(x)
-
-    in_shape = (int(x.get_shape()[1]), int(x.get_shape()[2]), int(x.get_shape()[3]))
-    x = AtrousConv2D(nb_filter3, 1, 1, name='other'+conv_name_base + '2c',atrous_rate=(2,2), input_shape=in_shape, border_mode='same')(x)
-    x = Reshape([int(x.get_shape()[1]), int(input_tensor.get_shape()[2]), int(input_tensor.get_shape()[3])])(x)
-
-    x = BatchNormalization(axis=bn_axis, name='other'+bn_name_base + '2c')(x)
-
-
-    in_shape = (int(input_tensor.get_shape()[1]), int(input_tensor.get_shape()[2]), int(input_tensor.get_shape()[3]))
-    shortcut = AtrousConv2D(nb_filter3, 1, 1, subsample=strides, atrous_rate=(2,2),
-                             name='other'+conv_name_base + '1', input_shape=in_shape, border_mode='same')(input_tensor)
-    shortcut = Reshape([int(x.get_shape()[1]), int(input_tensor.get_shape()[2]), int(input_tensor.get_shape()[3])])(shortcut)
-
-    shortcut = BatchNormalization(axis=bn_axis, name='other'+bn_name_base + '1')(shortcut)
-
-    x = merge([x, shortcut], mode='sum')
-    x = Activation('relu')(x)
-    return x
-
-
-
-
 def ResNet50(include_top=True, weights='imagenet',
              input_tensor=None, input_shape=None,
              classes=1000):
@@ -267,7 +168,6 @@ def ResNet50(include_top=True, weights='imagenet',
     else:
         bn_axis = 1
 
-    dim_factor = 4
     x = ZeroPadding2D((3, 3))(img_input)
     x = Convolution2D(64, 7, 7, subsample=(2, 2), name='other'+'conv1')(x)
     x = BatchNormalization(axis=bn_axis, name='other'+'bn_conv1')(x)
@@ -283,20 +183,16 @@ def ResNet50(include_top=True, weights='imagenet',
     x = identity_block(x, 3, [128, 128, 512], stage=3, block='c')
     x = identity_block(x, 3, [128, 128, 512], stage=3, block='d')
 
-    x = conv_block(x, 3, [256/dim_factor, 256/dim_factor, 1024/dim_factor], stage=4, block='a')
-    x = identity_block(x, 3, [256/dim_factor, 256/dim_factor, 1024/dim_factor], stage=4, block='b')
-    x = identity_block(x, 3, [256/dim_factor, 256/dim_factor, 1024/dim_factor], stage=4, block='c')
-    x = identity_block(x, 3, [256/dim_factor, 256/dim_factor, 1024/dim_factor], stage=4, block='d')
-    x = identity_block(x, 3, [256/dim_factor, 256/dim_factor, 1024/dim_factor], stage=4, block='e')
-    x = identity_block(x, 3, [256/dim_factor, 256/dim_factor, 1024/dim_factor], stage=4, block='f')
+    x = conv_block(x, 3, [256, 256, 1024], stage=4, block='a')
+    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='b')
+    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='c')
+    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='d')
+    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='e')
+    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='f')
 
-    #x = conv_block_atrous(x, 3, [512, 512, 2048], stage=5, block='a')
-    #x = identity_block_atrous(x, 3, [512, 512, 2048], stage=5, block='b')
-    #x = identity_block_atrous(x, 3, [512, 512, 2048], stage=5, block='c')
-
-    x = conv_block_atrous(x, 3, [512/dim_factor, 512/dim_factor, 2048/dim_factor], stage=5, block='a')
-    x = conv_block_atrous(x, 3, [512/dim_factor, 512/dim_factor, 2048/dim_factor], stage=5, block='b')
-    x = conv_block_atrous(x, 3, [512/dim_factor, 512/dim_factor, 2048/dim_factor], stage=5, block='c')
+    x = conv_block(x, 3, [512, 512, 2048], stage=5, block='a')
+    x = identity_block(x, 3, [512, 512, 2048], stage=5, block='b')
+    x = identity_block(x, 3, [512, 512, 2048], stage=5, block='c')
 
     x = AveragePooling2D((7, 7), name='other'+'avg_pool')(x)
 

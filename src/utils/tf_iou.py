@@ -25,20 +25,30 @@ def iou_loss(y_true, y_pred):
   l1_true = K.sum(K.abs(y_true), axis=[-2,-1])
   is_zero = tf.to_float(tf.equal(l1_true, 0))
 
+
   #also take into account zero_masks_percentage, to avoid 'easy wins' for hard classes
   #so that the 'wins' for empty masks equal the 'wins' for perfectly predicted masks = 1*percentage_of_non_zero
   #for perfect prediction, the mean of all actual costs should be 1
 
-  #actual_cost = (area_occupied_per_class * (1 - zero_masks_percentage_per_class) * 224 * 224 * is_zero + K.sum(
-  #  tf.mul(y_true, y_pred), axis=[-2, -1])) / (
-  #                (area_occupied_per_class * 224 * 224 * is_zero) + l1_pred + l1_true - K.sum(tf.mul(y_true, y_pred),
-  #                                                                                           axis=[-2, -1]))
+
+
+  #smooth = [1,1,1,1,1,1,100,1,1,1]
+  #This is approximately the size of an object when its present in the mask
+  #smooth = 224*224*(1-area_occupied_per_class)/(1-zero_masks_percentage_per_class)
+  #iou = 1/(1-zero_masks_percentage_per_class)*(1-is_zero)*(K.sum(
+  #   tf.mul(y_true, y_pred), axis=[-2, -1])) / (
+  #          smooth + l1_pred + l1_true - K.sum(tf.mul(y_true, y_pred), axis=[-2, -1]))
+
+  real_iou = (K.sum(tf.mul(y_true, y_pred), axis=[-2, -1])) / (
+    l1_pred + l1_true - K.sum(tf.mul(y_true, y_pred), axis=[-2, -1]))
+
+  #y_true = K.clip(y_true, 1e-6, 1-1e-6)
+  iou = real_iou
+
 
   #aprox taking into account the receptive field of 32 of the resnet (though it should be 32*32/x
-  smooth = [1,1,1,1,1,1,100,1,1,1]
-  #TODO: scale 1 - actual cost to perfectly match the previous logic, and that the sum of all losses for perfect matching is 0
-  iou = (smooth+ K.sum(tf.mul(y_true, y_pred), axis=[-2,-1])) / (
-    smooth + l1_pred + l1_true - K.sum(tf.mul(y_true, y_pred), axis=[-2,-1]))
+
+
 
   #is_zero = tf.to_float(tf.equal(l1_true, 0))
   #not_is_zero = K.abs(1 - is_zero)
@@ -53,11 +63,14 @@ def iou_loss(y_true, y_pred):
   #use iou when groundtruth not zero and l1 to zero when it is zero, and add proportional weights, to account for both
   #actual_cost = (1 - iou) #* not_is_zero + is_zero*K.sum(K.abs(y_pred), axis=[-2,-1])/224/224
 
-  actual_cost = K.mean(K.binary_crossentropy(y_pred, y_true), axis=[-1,-2])
+  cross_entropy  = K.mean(K.binary_crossentropy(y_pred, y_true), axis=[-1,-2])
+  actual_cost = cross_entropy
+
   actual_cost = tf.Print(actual_cost, [l1_true[0, :]], summarize=2000, message="l1 of y_true: ")
   actual_cost = tf.Print(actual_cost, [K.sum(K.abs(y_pred), axis=[-2,-1])[0, :]], summarize=2000, message="l1 of y_pred: ")
-  actual_cost = tf.Print(actual_cost, [K.mean(K.binary_crossentropy(y_pred, y_true), axis=[-1,-2])[0, :]], summarize=2000,message="loss for sample 0: ")
-  actual_cost = tf.Print(actual_cost, [(iou)[0, :]], summarize=2000, message="weighted_loss for sample 0: ")
+  actual_cost = tf.Print(actual_cost, [cross_entropy[0, :]], summarize=2000,message="loss for sample 0: ")
+  actual_cost = tf.Print(actual_cost, [(iou)[0, :]], summarize=2000, message="iou_loss for sample 0: ")
+  actual_cost = tf.Print(actual_cost, [(real_iou)[0, :]], summarize=2000, message="real iou for sample 0: ")
 
 
   return actual_cost#*[0,0,0,0,0,0,0,0,0,1]

@@ -40,15 +40,16 @@ class Dataset():
       #TODO: maybe use groundtruth directly, to achieve small increase for the following instances
       #self.image_list = ['6070_2_3', '6010_1_2', '6040_4_4', '6100_2_2']
 
-      self.image_list = [x for x in all_images if x not in np.asarray(train_images)]
-      self.image_list.append(['6070_2_3', '6010_1_2', '6040_4_4', '6100_2_2'])
+      self.image_list = all_images
+      #= [x for x in all_images if x not in np.asarray(train_images)]
+      #self.image_list.append(['6070_2_3', '6010_1_2', '6040_4_4', '6100_2_2'])
 
       # Read the CSV into a pandas data frame (df)
       #   With a df you can do many things
       #   most important: visualize data with Seaborn
       df = pd.read_csv(SAMPLE_SUBMISSION, delimiter=',')
 
-      self.image_list = list(df.ix[range(0,len(df),10),0])
+      self.images_to_submit  = list(df.ix[range(0,len(df),10),0])
 
     #To store previoulsy loaded images
     self.preloaded_images = dict()
