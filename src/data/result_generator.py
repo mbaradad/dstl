@@ -7,7 +7,7 @@ from image_processor import ImageProcessor
 import tifffile as tiff
 
 class ResultGenerator():
-  def __init__(self, train=True, augmentation=False, normalize=True, submission_dir='/mnt/sdd1/submissions/submission_2017-02-09_01:26:52.273168'):
+  def __init__(self, train=True, augmentation=False, normalize=True, submission_dir='/mnt/sdd1/submissions/submission_2017-02-09_01:26:52.273168', store_processed_images=True):
     #augmentation must be performed in this class, as the dataset augmentation can be extrapolated
     if augmentation:
       raise Exception('augmentation not implemented')
@@ -18,6 +18,7 @@ class ResultGenerator():
     self.submission_dir = submission_dir
     self.preprocessed_images = dict()
     self.train = train
+    self.store_processed_images = store_processed_images
 
   def generate_one_cropped(self, idx, crop_size, x_begin, y_begin):
     predicted_masks_list = self.generate_one(idx)
@@ -31,6 +32,8 @@ class ResultGenerator():
       predicted_masks = list()
       for i in range(10):
         predicted_masks.append(np.load(self.submission_dir + '/mask_' + self.image_list[idx] + '_' + str(i) + '.h5.npz')['arr_0'])
+      if not self.store_processed_images:
+        return predicted_masks
       self.preprocessed_images[idx] = predicted_masks
     return self.preprocessed_images[idx]
 

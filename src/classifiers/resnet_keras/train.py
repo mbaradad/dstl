@@ -30,12 +30,12 @@ from keras.applications.inception_v3 import InceptionV3
 from keras.layers.advanced_activations import LeakyReLU
 
 
-def create_model(finetune=False, bias_trainable=False):
+def create_model(finetune=False, load_weights=False):
   chunk_size = 16
   image_height = 224
   image_width = 224
 
-  hidden_dim = 1024
+  hidden_dim = 2048*2
   feat_size = 7
   filter_dim = 3
 
@@ -52,7 +52,8 @@ def create_model(finetune=False, bias_trainable=False):
       features_model = get_model_from_json('../../keras_bs/resnet_101/Keras_model_structure.json')
   else:
     features_model = get_model_from_json('../../keras_bs/resnet_101/Keras_model_structure.json')
-  features_model.load_weights('../../keras_bs/resnet_101/Keras_model_weights.h5')
+  if load_weights:
+    features_model.load_weights('../../keras_bs/resnet_101/Keras_model_weights.h5')
   features_input = features_model.input
   features_output = features_model.get_layer('res5c_relu')
   if not finetune:
@@ -116,8 +117,7 @@ def create_model(finetune=False, bias_trainable=False):
   # Deconv layers
   pre_hidden_dim = get_num_dimension_per_features_map_size(feat_size, feat_size, hidden_dim)
 
-  a = Convolution2D(pre_hidden_dim, filter_dim, filter_dim, border_mode='same')(features_output)  # (10,224,224)
-  a = BatchNormalization()(a)
+  a = features_output
   for i in range(int(log(image_height/feat_size, 2))):
       # at each iteration (tsteps,256,*=2,*=2)
       actual_size = feat_size * 2**i
@@ -131,11 +131,9 @@ def create_model(finetune=False, bias_trainable=False):
       else:
         print "Some skipped candidates couldn't be fetched (this is normal when not using resnet). Check dettention.py for skip candidates definition"
       deconv_hidden_dim = get_num_dimension_per_features_map_size(actual_size*2, feat_size, hidden_dim)
-      #b = Deconvolution2D(deconv_hidden_dim,filter_dim,filter_dim,
-      #                    (chunk_size, deconv_hidden_dim,feat_size*2**(i+1), feat_size*2**(i+1))
-      #                    , border_mode='same', subsample=(2,2), bias=False, input_shape=(chunk_size, pre_hidden_dim*2, feat_size*2**(i), feat_size*2**(i)))(a)
-      a = UpSampling2D(size=(2, 2))(a)
-      a = Convolution2D(deconv_hidden_dim, 3, 3, border_mode='same')(a)
+      a = Deconvolution2D(deconv_hidden_dim,filter_dim,filter_dim,
+                          (chunk_size, deconv_hidden_dim,feat_size*2**(i+1), feat_size*2**(i+1))
+                          , border_mode='same', subsample=(2,2))(a)
       #pre_hidden_dim = deconv_hidden_dim
       #a = Activation('relu')(a)
       a = BatchNormalization()(a)
@@ -143,7 +141,7 @@ def create_model(finetune=False, bias_trainable=False):
   #a = Convolution2D(pre_hidden_dim,filter_dim,filter_dim,border_mode='same')(a) # (10,224,224)
   #a = BatchNormalization(name='bn_end_1')(a)
   #a = Activation('relu')(a)
-  a = Convolution2D(10, filter_dim, filter_dim, border_mode='same')(a)  # (10,224,224)
+  a = Convolution2D(10, 3, 3, border_mode='same')(a)  # (10,224,224)
   #a = BatchNormalization(name='bn_end')(a)
 
   #w = int(a.get_shape()[2])
@@ -169,15 +167,14 @@ def add_skip_network(skip_candidates, hidden_dims, feat_size, skip_scale_init_we
         #init the gamma close to zero, and beta to zero so the skip network is not used at the begining
         size_scale = int(a.get_shape()[1])
         a = Scale(name='skip_scale_dim_' + k, weights=[np.asarray([skip_scale_init_weight]*size_scale), np.asarray([0]*size_scale)])(a)
-        a = Activation('relu', name='skip_relu_dim_' + k)(a)
-        #a = Dropout(0.5)(a)
+        #a = Activation('relu', name='skip_relu_dim_' + k)(a)
         processed_skip_candidates[k] = a
     return processed_skip_candidates
 
 def get_num_dimension_per_features_map_size(size, feat_size, hidden_dim):
     i = int(log(size/feat_size, 2))
     #return max(hidden_dim / 2 ** (i + 3), 1)
-    return max(hidden_dim / 2 ** (i + 1), 20)
+    return max(hidden_dim / 4 ** (i ), 30)
 
 
 if __name__ == "__main__":
@@ -185,7 +182,7 @@ if __name__ == "__main__":
   gpu_options = tf.GPUOptions(allow_growth=True)
   sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options))
   with sess.as_default():
-    model = create_model(finetune=False, bias_trainable=True)
+    model = create_model(finetune=False, load_weights=True)
 
     timestamp = str(datetime.datetime.now())
 
@@ -209,7 +206,7 @@ if __name__ == "__main__":
     api_token = os.getenv('TELEGRAM_API_TOKEN')
     tm = TelegramMonitor(api_token=api_token, chat_id=api_chat_id)
 
-    opt = Adam(lr=0.00001, beta_1=0.9, beta_2=0.999,
+    opt = Adam(lr=0.0001, beta_1=0.9, beta_2=0.999,
                      epsilon=1e-8)
 
 
@@ -223,6 +220,6 @@ if __name__ == "__main__":
     open(save_path + '/model.json', 'w').write(json_string)
     #Fixed samples per epoch to force model save
     #instead of d.get_n_samples(subset='train', crop_size=(224, 224)
-    model.fit_generator(generator_train, nb_epoch=500, samples_per_epoch=16000,
-                        validation_data=generator_val, nb_val_samples=1600,
+    model.fit_generator(generator_train, nb_epoch=500, samples_per_epoch=8000,
+                        validation_data=generator_val, nb_val_samples=800,
                         callbacks=[mc, ep, tb, tm], max_q_size=100)

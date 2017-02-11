@@ -13,7 +13,7 @@ import datetime
 #and the rest 9/10 are used for training
 #TODO: reserve some samples for validation (probably only when cropping is implemented).
 class Dataset():
-  def __init__(self, train=True, augmentation=False, normalize=True, downsampling=1):
+  def __init__(self, train=True, augmentation=False, normalize=True, downsampling=1, store_processed_images=True):
 
     #Place the unziped files at this path
     self.root_path = INPUT
@@ -26,6 +26,7 @@ class Dataset():
     self.downsampling = downsampling
     #self.classes_only = [9]
     self.select_non_zero_instances = False
+    self.store_processed_images=store_processed_images
 
     #only those with annotations are training, it should be 22 images
     df = pd.read_csv(TRAIN_WKT)
@@ -116,6 +117,8 @@ class Dataset():
       if not idx in self.preloaded_images.keys():
         images = self.processor.get_images(self.image_list[idx])
         masks = self.processor.get_masks(self.image_list[idx], images.shape[1], images.shape[2])
+        if not self.store_processed_images:
+          return (images, masks)
         self.preloaded_images[idx] = [images, masks]
       return (self.preloaded_images[idx][0], self.preloaded_images[idx][1])
     else:
@@ -151,6 +154,7 @@ class Dataset():
     else:
       masks_cropped = None
     if self.normalize:
+      #multiply for 255, to do the same as imagenet pretrained model
       image_cropped = np.transpose((np.transpose(image_cropped, [1, 2, 0]) - self.means[0:len(image_cropped)]) / self.stds[0:len(image_cropped)], [2, 0, 1])*255.0
 
     #sample weights, to take into consideration cropping and zero masks, assigning more weight to non-zero for sparse classes:
