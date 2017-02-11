@@ -1,5 +1,5 @@
 from dataset import Dataset
-from classifiers.resnet_keras.classifier import ResnetClassifier
+from classifiers.resnet_keras.classifier import ResnetClassifier, MultipleClassifier
 import pycocotools.mask as mask
 import numpy as np
 from utils.utils import *
@@ -55,7 +55,7 @@ def generate_submission(classifier):
 
   chunk_size = 16
   crop_size = classifier.get_crop_size()
-  idxs = d.get_generator_idxs(crop_size=crop_size, subset="", overlapping_percentage=0)
+  idxs = d.get_generator_idxs(crop_size=crop_size, subset="", overlapping_percentage=0.5)
   positions_by_idx = dict()
   for idx in idxs:
     if idx[0] in positions_by_idx.keys():
@@ -282,7 +282,8 @@ def get_header():
   return "ImageId,ClassType,MultipolygonWKT"
 
 if __name__ == "__main__":
-  os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-  classifier = ResnetClassifier(RESNET_KERAS_OUTPUT + "/execution_2017-02-0717:22:17.440248/model.h5")
+  os.environ["CUDA_VISIBLE_DEVICES"] = ""
+  classifier = ResnetClassifier(RESNET_KERAS_OUTPUT + "/execution_2017-02-1117:22:46.420973/model.h5")
+  #classifier = MultipleClassifier()
   generate_submission(classifier)
 

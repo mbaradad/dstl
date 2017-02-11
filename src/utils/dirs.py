@@ -26,6 +26,9 @@ FCN8_KERAS_OUTPUT = CLASSIFIERS_OUTPUT+ '/fcn8_keras'
 RESNET_KERAS = CLASSIFIERS + '/resnet_keras'
 RESNET_KERAS_OUTPUT = CLASSIFIERS_OUTPUT+ '/resnet_keras'
 
+TEMP_IMAGE_DIR = '/home/manel/Documents/'
+
+
 def mkdir(dir_name):
   os.mkdir(dir_name)
 
@@ -48,3 +51,5 @@ if os.getcwd().endswith('src'):
     os.mkdir(FCN8_KERAS_OUTPUT)
   if not os.path.isdir(RESNET_KERAS_OUTPUT):
     os.mkdir(RESNET_KERAS_OUTPUT)
+  if not os.path.isdir(TEMP_IMAGE_DIR):
+    os.mkdir(TEMP_IMAGE_DIR)

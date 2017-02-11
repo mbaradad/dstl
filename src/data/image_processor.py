@@ -87,3 +87,18 @@ class ImageProcessor():
 
   def get_image_size(self, idx):
     return tifffile.imread(THREE_BAND + '/' + idx + '.tif').shape[1:]
+
+  def scale_percentile(self, matrix):
+    w, h, d = matrix.shape
+    matrix = np.reshape(matrix, [w * h, d]).astype(np.float64)
+    # Get 2nd and 98th percentile
+    mins = np.percentile(matrix, 1, axis=0)
+    maxs = np.percentile(matrix, 99, axis=0) - mins
+    matrix = (matrix - mins[None, :]) / maxs[None, :]
+    matrix = np.reshape(matrix, [w, h, d])
+    matrix = matrix.clip(0, 1)
+    return matrix
+
+  def image_for_display(self, im):
+    return 255 * self.scale_percentile(im)
+

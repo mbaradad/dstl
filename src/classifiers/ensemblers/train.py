@@ -18,39 +18,70 @@ from keras.optimizers import Adam, RMSprop
 import os, datetime
 import utils.dirs as dirs
 from keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
-from data.dataset import Dataset
+from data.result_generator import ResultGenerator
 from keras.preprocessing.image import ImageDataGenerator
-from utils.tf_iou import iou_loss
+from utils.tf_iou import ensembler_loss, iou_loss
 from classifiers.fcn8_keras.fcn8_keras import get_model_from_json
 from classifiers.densenet_keras.densenet import create_dense_net
 from classifiers.fcn8_keras.custom_layers.bias import Bias
 import sys
 from keras.models import load_model
 from keras.layers import Merge
+from keras.layers.convolutional_recurrent import ConvLSTM2D
+from keras.layers.convolutional import AtrousConvolution2D
 
 models = ['']
-def create_model():
-  models_to_concat =[]
-  #if oom, predict and store masks, and then train the ensemble.
-  inputs = []
-  for model in models:
-    actual_model = models_to_concat.append(load_model(model + '/model.json'))
-    actual_model.load_weights(model + '/model.h5')
-    inputs.append(actual_model.input)
+def create_model(crops_per_dim=3):
+  filter_dim = 15
 
-  a = Merge(mode='concat')(models_to_concat)
-  a = Convolution2D(10, 3, 3, border_mode='same')(a)  # (10,224,224)
-  a = BatchNormalization(name='bn_end')(a)
-  a = Activation('relu')
-  a = a = Convolution2D(10, 3, 3, border_mode='same')(a)  # (10,224,224)
-  a = BatchNormalization(name='bn_end')(a)
-  a = Activation('softmax')
-  return Model(input=input, output=a)
+  input_a = Input((3, 224*crops_per_dim, 224*crops_per_dim))
+  input_b = Input((10, 224*crops_per_dim, 224*crops_per_dim))
+
+  input = Merge(mode='concat', concat_axis=1)([input_a, input_b])
+  #a = Flatten(name='flat_feats')(input_a)
+  #a = RepeatVector(tsteps, name='rep_feats')(a)
+  #a = Reshape((tsteps, input_dims[0], input_dims[1], input_dims[2]))(a)
+
+  #a = ConvLSTM2D(100, 10, 10, dropout_U=0.5, dropout_W=0.5,return_sequences=True, border_mode='same')(a)
+  #a = ConvLSTM2D(100, 10, 10, dropout_U=0.5, dropout_W=0.5, return_sequences=True, border_mode='same')(a)
+  #a = ConvLSTM2D(100, 10, 10, dropout_U=0.5, dropout_W=0.5, return_sequences=True, border_mode='same')(a)
+  #a = ConvLSTM2D(1000, 10, 10, dropout_U=0.5, dropout_W=0.5, return_sequences=True, border_mode='same')(a)
+  #a = ConvLSTM2D(1000, 10, 10, dropout_U=0.5, dropout_W=0.5, return_sequences=True, border_mode='same')(a)
+  #a = ConvLSTM2D(10, 224, 224, dropout_U=0.5, dropout_W=0.5, return_sequences=True, border_mode='same')(a)
+  '''
+  weights = np.zeros((10,13,9,9))
+  biases =  np.zeros((10))
+  weights = weights + 0.05
+  for i in range(10):
+    weights[i,3+i,5,5] = 1
+  '''
+
+  a = AtrousConvolution2D(10, filter_dim, filter_dim, border_mode='same', atrous_rate=(2,2))(input)
+  a = Activation('relu')(a)
+
+  '''
+  weights = np.zeros((10, 10, 9, 9))
+  weights = weights + 0.05
+  for i in range(10):
+    weights[i, i, 5, 5] = 1
+  '''
+
+  a = AtrousConvolution2D(10, filter_dim, filter_dim, border_mode='same', atrous_rate=(2,2))(a)
+  a = Activation('relu')(a)
+  a = AtrousConvolution2D(10, filter_dim, filter_dim, border_mode='same', atrous_rate=(2,2))(a)
+  a = Activation('relu')(a)
+  a = AtrousConvolution2D(10, filter_dim, filter_dim, border_mode='same', atrous_rate=(2,2))(a)
+  a = Activation('relu')(a)
+  a = AtrousConvolution2D(10, filter_dim, filter_dim, border_mode='same', atrous_rate=(2,2))(a)
+  a = Activation('sigmoid')(a)
 
 
-def big_generator():
-  d = Dataset(train=True)
-  #while True:
+  #def slice(x):
+  #  return x[:,tsteps-1]
+  #a = Lambda(slice)(a)
+
+  return Model(input=[input_a, input_b], output=a)
+
 
 
 if __name__ == "__main__":
@@ -58,20 +89,18 @@ if __name__ == "__main__":
   gpu_options = tf.GPUOptions(allow_growth=True)
   sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options))
   with sess.as_default():
-    model_0 = load_model(dirs.RESNET_KERAS_OUTPUT + "execution_2017-02-0820:09:59.765910/model.h5")
-
-    model = create_model()
+    model_file = dirs.RESNET_KERAS_OUTPUT + "/execution_2017-02-0921:27:39.762008/model"
+    crops_per_dim = 3
+    model = create_model(crops_per_dim=crops_per_dim)
 
     timestamp = str(datetime.datetime.now())
-
 
     save_path = dirs.RESNET_KERAS_OUTPUT + '/execution_' + timestamp
     save_path = save_path.replace(' ', '')
 
-
     os.mkdir(save_path)
 
-    sys.stdout = open( save_path + '/train.log', 'w')
+    sys.stdout = open(save_path + '/train.log', 'w')
 
     model.summary()
 
@@ -80,19 +109,19 @@ if __name__ == "__main__":
     tb = TensorBoard(log_dir=save_path + '/tensor.log', histogram_freq=0, write_graph=True, write_images=False)
 
 
-    opt = Adam(lr=0.001, beta_1=0.9, beta_2=0.999,
-                     epsilon=1e-8, decay=0.)
+    opt = Adam(lr=0.000001, beta_1=0.9, beta_2=0.999,
+                     epsilon=1e-8, decay=0.00001)
 
     # to be used when both classes and masks are being predicted
-    model.compile(optimizer=opt, loss=iou_loss)
-    d = Dataset(train=True, augmentation=False)
+    model.compile(optimizer=opt, loss=ensembler_loss)
+    d = ResultGenerator(train=True, augmentation=False)
 
-    generator_train = d.cropped_generator(chunk_size=16, crop_size=(224,224), overlapping_percentage=0.2, subset='train')
-    generator_val = d.cropped_generator(chunk_size=16, crop_size=(224,224), overlapping_percentage=0.2, subset='val')
+    generator_train = d.cropped_generator(chunk_size=16, crop_size=(224*crops_per_dim,224*crops_per_dim), overlapping_percentage=0.80, subset='train')
+    generator_val = d.cropped_generator(chunk_size=16, crop_size=(224*crops_per_dim,224*crops_per_dim), overlapping_percentage=0.80, subset='val')
     json_string = model.to_json()
     open(save_path + '/model.json', 'w').write(json_string)
-    model.fit_generator(generator_train, nb_epoch=500, samples_per_epoch=d.get_n_samples(subset='train', crop_size=(224,224), overlapping_percentage=0.2),
-                        validation_data=generator_val, nb_val_samples=d.get_n_samples(subset='val', crop_size=(224,224), overlapping_percentage=0.2),
-                        callbacks=[mc, ep, tb])
+    model.fit_generator(generator_train, nb_epoch=500, samples_per_epoch=8000,
+                        validation_data=generator_val, nb_val_samples=800,
+                        callbacks=[mc, ep, tb], max_q_size=100)
 
 

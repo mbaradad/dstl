@@ -28,9 +28,9 @@ from classifiers.fcn8_keras.custom_layers.bias import Bias
 import sys
 from keras.applications.inception_v3 import InceptionV3
 from keras.layers.advanced_activations import LeakyReLU
-from ResnetMod import identity_block, conv_block
 
-def create_model(finetune=False):
+
+def create_model(finetune=False, bias_trainable=False):
   chunk_size = 16
   image_height = 224
   image_width = 224
@@ -52,17 +52,15 @@ def create_model(finetune=False):
       features_model = get_model_from_json('../../keras_bs/resnet_101/Keras_model_structure.json')
   else:
     features_model = get_model_from_json('../../keras_bs/resnet_101/Keras_model_structure.json')
-    features_model.load_weights('../../keras_bs/resnet_101/Keras_model_weights.h5')
+  features_model.load_weights('../../keras_bs/resnet_101/Keras_model_weights.h5')
   features_input = features_model.input
-  features_output = features_model.get_layer('res5c_relu').output
-
-
+  features_output = features_model.get_layer('res5c_relu')
   if not finetune:
     for l in features_model.layers:
       l.trainable = False
   features_model_name = 'resnet_101'
 
-  features_output = Merge(mode='concat', concat_axis=1)([features_output, other_ch_output.output])
+  features_output = Merge(mode='concat', concat_axis=1)([features_output.output, other_ch_output.output])
   '''
   features_model = get_model_from_json('../../keras_bs/resnet/Keras_model_structure.json')
   features_model.load_weights('../../keras_bs/resnet/Keras_model_weights.h5')
@@ -127,19 +125,19 @@ def create_model(finetune=False):
       #deconv_hidden_dim = hidden_dim/2**i
       if str(actual_size) in skip_candidates.keys():
           actual_skip = skip_candidates[str(actual_size)]
-          a = Merge(mode='sum', name='merge_deconv_res_' +str(i), concat_axis=1)([actual_skip, a])
-          a = Activation('relu')(a)
+          a = Merge(mode='concat', name='merge_deconv_res_' +str(i), concat_axis=1)([actual_skip, a])
+          #a = Activation('relu')(a)
           a = BatchNormalization()(a)
       else:
         print "Some skipped candidates couldn't be fetched (this is normal when not using resnet). Check dettention.py for skip candidates definition"
       deconv_hidden_dim = get_num_dimension_per_features_map_size(actual_size*2, feat_size, hidden_dim)
-      a = Deconvolution2D(deconv_hidden_dim,filter_dim,filter_dim,
-                          (chunk_size, deconv_hidden_dim,feat_size*2**(i+1), feat_size*2**(i+1))
-                          , border_mode='same', subsample=(2,2), bias=False, input_shape=(chunk_size, pre_hidden_dim*2, feat_size*2**(i), feat_size*2**(i)))(a)
-      #a = UpSampling2D(size=(2, 2))(a)
-      #a = Convolution2D(deconv_hidden_dim, 3, 3, border_mode='same')(a)
-      pre_hidden_dim = deconv_hidden_dim
-      a = Activation('relu')(a)
+      #b = Deconvolution2D(deconv_hidden_dim,filter_dim,filter_dim,
+      #                    (chunk_size, deconv_hidden_dim,feat_size*2**(i+1), feat_size*2**(i+1))
+      #                    , border_mode='same', subsample=(2,2), bias=False, input_shape=(chunk_size, pre_hidden_dim*2, feat_size*2**(i), feat_size*2**(i)))(a)
+      a = UpSampling2D(size=(2, 2))(a)
+      a = Convolution2D(deconv_hidden_dim, 3, 3, border_mode='same')(a)
+      #pre_hidden_dim = deconv_hidden_dim
+      #a = Activation('relu')(a)
       a = BatchNormalization()(a)
 
   #a = Convolution2D(pre_hidden_dim,filter_dim,filter_dim,border_mode='same')(a) # (10,224,224)
@@ -166,16 +164,14 @@ def create_model(finetune=False):
 def add_skip_network(skip_candidates, hidden_dims, feat_size, skip_scale_init_weight):
     processed_skip_candidates = dict()
     for k, layer in skip_candidates.items():
-      nb_filters = get_num_dimension_per_features_map_size(int(layer.get_shape()[3]), feat_size, hidden_dims)
-      a = conv_block(layer, 3, [nb_filters/2, nb_filters/2, nb_filters], strides=(1, 1), stage=0, block='skip_conv_0_' +k)
-      a = identity_block(a, 3, [nb_filters / 2, nb_filters / 2, nb_filters], stage=0, block='skip_id_0_' +k)
-      a = identity_block(a, 3, [nb_filters / 2, nb_filters / 2, nb_filters], stage=0, block='skip_id_1_' + k)
-      #init the gamma close to zero, and beta to zero so the skip network is not used at the begining
-      size_scale = int(a.get_shape()[1])
-      a = Scale(name='skip_scale_dim_' + k, weights=[np.asarray([skip_scale_init_weight]*size_scale), np.asarray([0]*size_scale)])(a)
-      #a = Activation('relu', name='skip_relu_dim_' + k)(a)
-      #a = Dropout(0.5)(a)
-      processed_skip_candidates[k] = a
+        a = Convolution2D(get_num_dimension_per_features_map_size(int(layer.get_shape()[3]), feat_size, hidden_dims), 3, 3, border_mode='same', name='skip_conv_dim_' + k)(layer)
+        a = BatchNormalization(name='skip_bn_dim_' + k)(a)
+        #init the gamma close to zero, and beta to zero so the skip network is not used at the begining
+        size_scale = int(a.get_shape()[1])
+        a = Scale(name='skip_scale_dim_' + k, weights=[np.asarray([skip_scale_init_weight]*size_scale), np.asarray([0]*size_scale)])(a)
+        a = Activation('relu', name='skip_relu_dim_' + k)(a)
+        #a = Dropout(0.5)(a)
+        processed_skip_candidates[k] = a
     return processed_skip_candidates
 
 def get_num_dimension_per_features_map_size(size, feat_size, hidden_dim):
@@ -189,7 +185,7 @@ if __name__ == "__main__":
   gpu_options = tf.GPUOptions(allow_growth=True)
   sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options))
   with sess.as_default():
-    model = create_model(finetune=False)
+    model = create_model(finetune=False, bias_trainable=True)
 
     timestamp = str(datetime.datetime.now())
 
@@ -200,7 +196,7 @@ if __name__ == "__main__":
 
     os.mkdir(save_path)
 
-    #sys.stdout = open( save_path + '/train.log', 'w')
+    sys.stdout = open( save_path + '/train.log', 'w')
 
     model.summary()
 
@@ -213,8 +209,8 @@ if __name__ == "__main__":
     api_token = os.getenv('TELEGRAM_API_TOKEN')
     tm = TelegramMonitor(api_token=api_token, chat_id=api_chat_id)
 
-    opt = Adam(lr=0.001, beta_1=0.9, beta_2=0.999,
-                     epsilon=1e-8, decay=0.000005)
+    opt = Adam(lr=0.00001, beta_1=0.9, beta_2=0.999,
+                     epsilon=1e-8)
 
 
     # to be used when both classes and masks are being predicted
@@ -229,4 +225,4 @@ if __name__ == "__main__":
     #instead of d.get_n_samples(subset='train', crop_size=(224, 224)
     model.fit_generator(generator_train, nb_epoch=500, samples_per_epoch=16000,
                         validation_data=generator_val, nb_val_samples=1600,
-                        callbacks=[mc, ep, tb], max_q_size=100)
+                        callbacks=[mc, ep, tb, tm], max_q_size=100)

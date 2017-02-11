@@ -7,6 +7,8 @@ import tensorflow as tf
 from math import factorial
 from keras.objectives import binary_crossentropy
 
+
+
 def iou_loss(y_true, y_pred):
   #add epsilon*224*224, to take into account the clipping of L1 y_pred in the denominator
   #when y_true is zero
@@ -76,6 +78,52 @@ def iou_loss(y_true, y_pred):
   return actual_cost#*[0,0,0,0,0,0,0,0,0,1]
   #return actual_cost
   #return 1 - K.sqrt(actual_cost)
+
+def ensembler_loss(y_true, y_pred):
+
+  zero_masks_percentage_per_class = np.asarray([0.78762727, 0.71392209, 0.93249225, 0.52611775, 0.05146082,
+                                     0.65692784, 0.97864099, 0.97211155, 0.99081452, 0.94876051])
+
+  #used as a 'groundtruth l1' for smoothing
+  area_occupied_per_class = np.asarray([3.51788670e-02, 9.12233361e-03, 7.56076172e-03, 3.02536476e-02,
+                                        1.08549209e-01, 2.78849391e-01, 4.96184210e-03, 1.74715459e-03,
+                                        4.48981383e-05, 1.90685129e-04])
+
+
+  l1_pred = K.sum(K.abs(y_pred), axis=[-2,-1])
+  l1_true = K.sum(K.abs(y_true), axis=[-2,-1])
+  is_zero = tf.to_float(tf.equal(l1_true, 0))
+
+  real_iou = (K.sum(tf.mul(y_true, y_pred), axis=[-2, -1])) / (
+    l1_pred + l1_true - K.sum(tf.mul(y_true, y_pred), axis=[-2, -1]))
+
+  #smooth = [1,1,1,1,1,1,100,1,1,1]
+  #This is approximately the size of an object when its present in the mask
+  #smooth = 224*224*(1-area_occupied_per_class)/(1-zero_masks_percentage_per_class)
+  #y_true = K.clip(y_true, 1e-6, 1-1e-6)
+
+  iou = (K.sum(
+     tf.mul(y_true, y_pred), axis=[-2, -1])) / (
+            K.sum(K.abs(y_pred), axis=[-2,-1]) + K.sum(K.abs(y_true), axis=[-2,-1]) - K.sum(tf.mul(y_true, y_pred), axis=[-2, -1]))
+
+
+  #use iou when groundtruth not zero and l1 to zero when it is zero, and add proportional weights, to account for both
+  #actual_cost = (1 - iou) #* not_is_zero + is_zero*K.sum(K.abs(y_pred), axis=[-2,-1])/224/224
+
+  cross_entropy  = K.mean(K.binary_crossentropy(y_pred, y_true), axis=[-1,-2])
+  actual_cost = cross_entropy
+
+  actual_cost = tf.Print(actual_cost, [l1_true[0, :]], summarize=2000, message="l1 of y_true: ")
+  actual_cost = tf.Print(actual_cost, [K.sum(K.abs(y_pred), axis=[-2,-1])[0, :]], summarize=2000, message="l1 of y_pred: ")
+  actual_cost = tf.Print(actual_cost, [cross_entropy[0, :]], summarize=2000,message="loss for sample 0: ")
+  actual_cost = tf.Print(actual_cost, [(iou)[0, :]], summarize=2000, message="iou_loss for sample 0: ")
+  actual_cost = tf.Print(actual_cost, [(real_iou)[0, :]], summarize=2000, message="real iou for sample 0: ")
+
+
+  return actual_cost#*[0,0,0,0,0,0,0,0,0,1]
+  #return actual_cost
+  #return 1 - K.sqrt(actual_cost)
+
 
 def binary_cross_entropy_loss(y_true, y_pred):
   zero_masks_percentage_per_class = np.asarray([0.78762727, 0.71392209, 0.93249225, 0.52611775, 0.05146082,

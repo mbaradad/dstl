@@ -69,13 +69,13 @@ class Dataset():
       "Standing water",
       "Vehicle Large",
       "Vehicle Small"]
-    self.means = np.asarray([  329.95846619,   414.74250944,   305.02988176,  3191.11093819,
+    self.means = np.asarray([329.95846619,   414.74250944,   305.02988176,  3191.11093819,
         3718.8890884 ,  3401.60485121,  3127.57398649,  2612.33625032,
         2354.97220436,  2288.29265143,  2288.09404569,   293.54224129,
          305.14513705,   414.94993739,   464.7065359 ,   330.15337527,
          449.86065868,   409.28267764,   422.98811144,   451.28799937])
 
-    self.stds = np.asarray([  25.21697092,   20.26343569,    9.84691434,  274.77193071,
+    self.stds = np.asarray([25.21697092,   20.26343569,    9.84691434,  274.77193071,
         319.14481443,  292.78475428,  274.8996716 ,  270.56382503,
         236.50423548,  244.0594615 ,  255.95098918,    5.41074222,
           9.81402107,   20.19385471,   29.7182571 ,   25.04388324,
@@ -108,7 +108,7 @@ class Dataset():
 
   def generate_by_name(self, name):
     if name in self.image_list:
-      return self.generate_one(self.image_list.index(name))
+      return self.generate_one(list(self.image_list).index(name))
 
   def generate_one(self, idx):
     #only training images are stored in memory, test images are not
@@ -184,9 +184,10 @@ class Dataset():
 
   def generate_cropped(self, idxs, crop_size):
     # maybe store everything in memory
-    images = None
-    masks = None
+    images = np.zeros((len(idxs), 20, crop_size[0], crop_size[1]))
+    masks = np.zeros((len(idxs), 10, crop_size[0], crop_size[1]))
     weights = None
+    i = 0
     for id in idxs:
       image_id = id[0]
       x_begin = id[1]
@@ -197,21 +198,13 @@ class Dataset():
         im = self.augment(im)
         m = self.augment(m, mask=True)
 
-      actual_images = np.expand_dims(im, axis=0)
-      actual_masks = np.expand_dims(m, axis=0)
-      actual_weights = np.expand_dims(w, axis=0)
-      if images is None:
-        images = actual_images
-        masks = actual_masks
-        weights = actual_weights
-      else:
-        images = np.append(images, actual_images, axis=0)
-        masks = np.append(masks, actual_masks, axis=0)
-        weights = np.append(weights, actual_weights , axis=0)
-    not_is_zero = np.asarray(np.sum(masks, axis=(-1,-2)) != 0, dtype='float32')
-    not_is_zero_sum = np.transpose(np.reshape(np.tile(np.sum(not_is_zero, axis=-1),10),[10,16]))
-    not_is_zero_sum = not_is_zero_sum + 1*(not_is_zero_sum == 0)
-    not_is_zero = not_is_zero/not_is_zero_sum
+      images[i] = im
+      masks[i] = m
+      #weights = np.append(weights, actual_weights , axis=0)
+    #not_is_zero = np.asarray(np.sum(masks, axis=(-1,-2)) != 0, dtype='float32')
+    #not_is_zero_sum = np.transpose(np.reshape(np.tile(np.sum(not_is_zero, axis=-1),10),[10,16]))
+    #not_is_zero_sum = not_is_zero_sum + 1*(not_is_zero_sum == 0)
+    #not_is_zero = not_is_zero/not_is_zero_sum
     #return [[images[:, 0:3, :, :], images[:, 3:, :, :]], [masks, not_is_zero], [weights, weights]]
     return [[images[:,0:3,:,:], images[:,3:,:,:]], masks]
 

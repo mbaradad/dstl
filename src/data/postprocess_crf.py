@@ -9,31 +9,42 @@ import pandas as pd
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+from utils.dirs import TEMP_IMAGE_DIR
+from data.image_processor import ImageProcessor
+import tifffile as tiff
+
 
 def post_process_crf(id):
   d = Dataset(train=False)
   image_list = d.get_image_list()
-  id = image_list[0]
-  d.generate_one(0)
+  #id = image_list[0]
+  #d.generate_one(0)
 
-  id = '6030_4_4'
+  a = ImageProcessor()
+
+  id = '6170_4_1'
 
   submission = '/home/manel/Documents/dstl/output/submissions/submission_2017-02-07_02:24:07.905275.csv'
-  np_dir = submission.replace(".csv", "/")
+  np_dir = '/mnt/sdd1/submissions/submission_2017-02-09_01:26:52.273168/'
 
-  os.listdir(np_dir)
+  #os.listdir(np_dir)
 
   predicted_maps = list()
   for i in range(10):
-    predicted_maps.append(np.load(np_dir + 'mask_' + id + '_' + str(i) + '.h5.npy'))
+    predicted_maps.append(np.load(np_dir + 'mask_' + id + '_' + str(i) + '.h5.npz')['arr_0'])
 
-  im, _ = d.generate_one(362)
+  im, _ = d.generate_one(list(image_list).index(id))
 
   predicted_maps = np.resize(predicted_maps, [10, im.shape[1], im.shape[2]])
 
   im = im[:3]
+
   image = np.transpose(im, [1,2,0])
+  image = a.image_for_display(image)
   unary = np.asarray(predicted_maps, dtype='float32').squeeze()
+
+  tiff.imshow(image)
+  plt.savefig(TEMP_IMAGE_DIR + '/fig.png')
 
   #softmax = processed_probabilities.transpose((2, 0, 1))
 
@@ -60,7 +71,7 @@ def post_process_crf(id):
   # This creates the color-dependent features --
   # because the segmentation that we get from CNN are too coarse
   # and we can use local color features to refine them
-  feats = create_pairwise_bilateral(sdims=(50, 50), schan=(900, 900, 900),
+  feats = create_pairwise_bilateral(sdims=(50, 50), schan=(20, 20, 20),
                                     img=image, chdim=2)
 
   d.addPairwiseEnergy(feats, compat=10,
@@ -69,17 +80,22 @@ def post_process_crf(id):
   Q = d.inference(5)
 
   res = np.argmax(Q, axis=0).reshape((image.shape[0], image.shape[1]))
+  map = np.asarray(Q)[5].reshape((image.shape[0], image.shape[1]))
 
-  cmap = plt.get_cmap('bwr')
+  #cmap = plt.get_cmap('bwr')
 
-  f, (ax1, ax2) = plt.subplots(1, 2, sharey=True)
-  ax1.imshow(res, vmax=1.5, vmin=-0.4, cmap=cmap)
-  ax1.set_title('Segmentation with CRF post-processing')
+  #f, (ax1, ax2) = plt.subplots(1, 2, sharey=True)
+
+  #ax1.set_title('Segmentation with CRF post-processing')
   #probability_graph = ax2.imshow(np.dstack((train_annotation,) * 3) * 100)
   #ax2.set_title('Ground-Truth Annotation')
-  plt.show()
-  a = 1
-  plt.savefig('asdf.jpg')
+  #a = 1
+  plt.imshow(predicted_maps[5])
+  plt.savefig(TEMP_IMAGE_DIR + '/original.jpg')
+  plt.imshow(map)
+  plt.savefig(TEMP_IMAGE_DIR + '/processed.jpg')
+  plt.imshow(res == 8)
+  plt.savefig(TEMP_IMAGE_DIR + '/im2.jpg')
 
 if __name__ == "__main__":
   post_process_crf('6020_1_1')

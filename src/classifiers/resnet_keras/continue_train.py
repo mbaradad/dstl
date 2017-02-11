@@ -37,15 +37,13 @@ if __name__ == "__main__":
   gpu_options = tf.GPUOptions(allow_growth=True)
   sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options))
   with sess.as_default():
-    model_file = dirs.RESNET_KERAS_OUTPUT + "/execution_2017-02-0717:22:17.440248/model"
+    model_file = dirs.RESNET_KERAS_OUTPUT + "/execution_2017-02-1117:22:46.420973/model"
     model = create_model(finetune=True)
 
     timestamp = str(datetime.datetime.now())
 
-
     save_path = dirs.RESNET_KERAS_OUTPUT + '/execution_' + timestamp
     save_path = save_path.replace(' ', '')
-
 
     os.mkdir(save_path)
 
@@ -61,9 +59,9 @@ if __name__ == "__main__":
     api_token = os.getenv('TELEGRAM_API_TOKEN')
     tm = TelegramMonitor(api_token=api_token, chat_id=api_chat_id)
 
-    lr = 1e-3
+    lr = 1e-7
     opt = Adam(lr=lr, beta_1=0.9, beta_2=0.999,
-                     epsilon=1e-8, decay=1e-4)
+                     epsilon=1e-8, decay=1e-5)
 
     print 'using lr:' + str(lr)
 
@@ -74,14 +72,14 @@ if __name__ == "__main__":
 
     model.load_weights(model_file + '.h5')
 
-    generator_train = d.cropped_generator(chunk_size=16, crop_size=(224,224), overlapping_percentage=0.2, subset='train')
-    generator_val = d.cropped_generator(chunk_size=16, crop_size=(224,224), overlapping_percentage=0.2, subset='val')
+    generator_train = d.cropped_generator(chunk_size=16, crop_size=(224,224), overlapping_percentage=0.75, subset='train')
+    generator_val = d.cropped_generator(chunk_size=16, crop_size=(224,224), overlapping_percentage=0.75, subset='val')
     json_string = model.to_json()
     open(save_path + '/model.json', 'w').write(json_string)
     #Fixed samples per epoch to force model save
     #instead of d.get_n_samples(subset='train', crop_size=(224, 224)
-    model.fit_generator(generator_train, nb_epoch=2000, samples_per_epoch=1600,
-                        validation_data=generator_val, nb_val_samples=160,
+    model.fit_generator(generator_train, nb_epoch=2000, samples_per_epoch=8000,
+                        validation_data=generator_val, nb_val_samples=800,
                         callbacks=[mc, ep, tb, tm])
 
 
