@@ -37,7 +37,7 @@ if __name__ == "__main__":
   gpu_options = tf.GPUOptions(allow_growth=True)
   sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options))
   with sess.as_default():
-    model_file = dirs.RESNET_KERAS_OUTPUT + "/execution_2017-02-1117:22:46.420973/model"
+    model_file = dirs.RESNET_KERAS_OUTPUT + "/execution_2017-02-1202:49:27.328895/model"
     model = create_model(finetune=True)
 
     timestamp = str(datetime.datetime.now())
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     api_token = os.getenv('TELEGRAM_API_TOKEN')
     tm = TelegramMonitor(api_token=api_token, chat_id=api_chat_id)
 
-    lr = 1e-7
+    lr = 1e-5
     opt = Adam(lr=lr, beta_1=0.9, beta_2=0.999,
                      epsilon=1e-8, decay=1e-5)
 

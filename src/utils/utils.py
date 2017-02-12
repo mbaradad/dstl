@@ -8,7 +8,7 @@ def resize(img, height, width):
   '''
   zoom_h = float(height) / img.shape[0]
   zoom_w = float(width) / img.shape[1]
-  img = zoom(img, [zoom_h, zoom_w, 1], mode='nearest', order=0)
+  img = zoom(img, [zoom_h, zoom_w, 1], mode='constant', order=0)
   return img
 
 def imshow_th(image):

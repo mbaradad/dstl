@@ -36,20 +36,23 @@ def iou_loss(y_true, y_pred):
 
   #smooth = [1,1,1,1,1,1,100,1,1,1]
   #This is approximately the size of an object when its present in the mask
-  #smooth = 224*224*(1-area_occupied_per_class)/(1-zero_masks_percentage_per_class)
-  #iou = 1/(1-zero_masks_percentage_per_class)*(1-is_zero)*(K.sum(
-  #   tf.mul(y_true, y_pred), axis=[-2, -1])) / (
-  #          smooth + l1_pred + l1_true - K.sum(tf.mul(y_true, y_pred), axis=[-2, -1]))
+  smooth = 1e-6
+  iou = (smooth + K.sum(
+     tf.mul(y_true, y_pred), axis=[-2, -1])) / (
+            smooth + l1_pred + l1_true - K.sum(tf.mul(y_true, y_pred), axis=[-2, -1]))
 
   real_iou = (K.sum(tf.mul(y_true, y_pred), axis=[-2, -1])) / (
     l1_pred + l1_true - K.sum(tf.mul(y_true, y_pred), axis=[-2, -1]))
 
   #y_true = K.clip(y_true, 1e-6, 1-1e-6)
-  iou = real_iou
+  #l1_true_clipped = K.sum(K.abs(y_true), axis=[-2,-1])
 
+  #smooth = 1
+  #iou = (smooth + K.sum(
+  #  tf.mul(y_true, y_pred), axis=[-2, -1])) / (smooth +
+  #        l1_pred + l1_true - K.sum(tf.mul(y_true, y_pred), axis=[-2, -1]))
 
   #aprox taking into account the receptive field of 32 of the resnet (though it should be 32*32/x
-
 
 
   #is_zero = tf.to_float(tf.equal(l1_true, 0))

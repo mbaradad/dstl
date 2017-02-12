@@ -1,5 +1,6 @@
 #The root folder is src, so all paths are relative to it
 import os
+import matplotlib.pyplot as plt
 
 INPUT = '../input'
 SIXTEEN_BAND = INPUT + '/sixteen_band'
@@ -26,11 +27,15 @@ FCN8_KERAS_OUTPUT = CLASSIFIERS_OUTPUT+ '/fcn8_keras'
 RESNET_KERAS = CLASSIFIERS + '/resnet_keras'
 RESNET_KERAS_OUTPUT = CLASSIFIERS_OUTPUT+ '/resnet_keras'
 
-TEMP_IMAGE_DIR = '/home/manel/Documents/'
+TEMP_IMAGE_DIR = '/home/manel/Documents'
 
 
 def mkdir(dir_name):
   os.mkdir(dir_name)
+
+def savefig(im, name):
+  plt.imshow(im)
+  plt.savefig(TEMP_IMAGE_DIR + '/' + name + '.jpg')
 
 if os.getcwd().endswith('src'):
   if not os.path.isdir(INPUT):

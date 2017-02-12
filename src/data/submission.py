@@ -18,7 +18,6 @@ import tensorflow as tf
 import cv2
 from collections import defaultdict
 import pandas as pd
-import matplotlib.pyplot as plt
 
 import rasterio
 from rasterio.features import shapes
@@ -32,6 +31,20 @@ def calc_precision(x, y):
   power_x = -int(math.floor(math.log10(abs(x))))
   power_y = -int(math.floor(math.log10(abs(y))))
   return max(power_x, power_y)
+
+def add_prediction(masks, pos, crop_size, predictions, overlapping_percentage):
+
+  predicted_mask = np.zeros(masks.shape)
+  predicted_mask[:, pos[1]:(pos[1] + crop_size[0]), pos[2]:(pos[2] + crop_size[1])] = predictions
+
+  kernel = np.ones((int(crop_size[0] * overlapping_percentage), int(crop_size[1] * overlapping_percentage)), np.float32)
+
+  eroded_mask = cv2.erode(np.asarray(predicted_mask[0] != 0, np.float32), kernel)
+  indexes = np.where(eroded_mask != 0)
+
+  masks[:,indexes[0][0]:indexes[0][-1], indexes[1][0]:indexes[1][-1]] = predicted_mask[:,indexes[0][0]:indexes[0][-1], indexes[1][0]:indexes[1][-1]]
+  return masks
+
 
 def generate_submission(classifier):
   #kernel_closings = [5, 5, 5, 5, 10, 5, 5, 5, 1, 1]
@@ -55,7 +68,8 @@ def generate_submission(classifier):
 
   chunk_size = 16
   crop_size = classifier.get_crop_size()
-  idxs = d.get_generator_idxs(crop_size=crop_size, subset="", overlapping_percentage=0.5)
+  overlapping_percentage = 0.15
+  idxs = d.get_generator_idxs(crop_size=crop_size, subset="", overlapping_percentage=overlapping_percentage)
   positions_by_idx = dict()
   for idx in idxs:
     if idx[0] in positions_by_idx.keys():
@@ -84,21 +98,19 @@ def generate_submission(classifier):
     masks = np.zeros([10, d.image_sizes[idx][0], d.image_sizes[idx][1]], dtype='float32')
     d.generate_one(idx)
     for i in range(0, len(positions_by_idx[idx]), chunk_size):
+
       actual_pos = positions_by_idx[idx][i:i+chunk_size]
-      ims = None
+      ims = np.zeros([chunk_size, 20, crop_size[0], crop_size[1]])
+      j = 0
       for pos in actual_pos:
         im = d.generate_one_cropped(pos[0], crop_size, pos[1], pos[2])[0]
-        if ims is None:
-          ims = np.expand_dims(im, axis=0)
-        else:
-          ims = np.append(ims, np.expand_dims(im, axis=0), axis=0)
-      if len(ims) < chunk_size:
-        ims = np.append(ims, np.zeros([chunk_size - ims.shape[0], ims.shape[1], ims.shape[2], ims.shape[3]]), axis=0)
+        ims[j] = im
+        j+=1
       predictions = classifier.predict([ims[:,:3,:,:], ims[:,3:,:,:]])
-      i = 0
+      j = 0
       for pos in actual_pos:
-        masks[:, pos[1]:(pos[1]+crop_size[0]), pos[2]:(pos[2]+crop_size[1])] = predictions[i]
-        i+=1
+        masks = add_prediction(masks, pos, crop_size, predictions[j], overlapping_percentage)
+        j+=1
     height = masks.shape[1]
     width = masks.shape[2]
     [x_max, y_min] = d.get_grid_size(idx)
@@ -282,8 +294,8 @@ def get_header():
   return "ImageId,ClassType,MultipolygonWKT"
 
 if __name__ == "__main__":
-  os.environ["CUDA_VISIBLE_DEVICES"] = ""
-  classifier = ResnetClassifier(RESNET_KERAS_OUTPUT + "/execution_2017-02-1117:22:46.420973/model.h5")
+  os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+  classifier = ResnetClassifier(RESNET_KERAS_OUTPUT + "/execution_2017-02-1202:49:27.328895/model.h5")
   #classifier = MultipleClassifier()
   generate_submission(classifier)
 

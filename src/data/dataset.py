@@ -8,6 +8,7 @@ random.seed(1337)
 
 from image_processor import ImageProcessor
 import datetime
+import tifffile as tiff
 
 #When cropping, one out of 10 samples is reserved for validation, taking the modulus of the sample position
 #and the rest 9/10 are used for training
@@ -164,27 +165,32 @@ class Dataset():
     weights = np.ones(10)
     return (image_cropped, masks_cropped, weights)
 
-  def augment(self, im, mask=False):
+  def _augment(self, im, augmentation):
     t_im = np.transpose(im, [1, 2, 0])
-    if self.last_augmentation == 0:
+    if augmentation == 0:
       im = im
-    elif self.last_augmentation == 1:
+    elif augmentation == 1:
       im = np.transpose(np.rot90(t_im, 1), [2, 0, 1])
-    elif self.last_augmentation == 2:
+    elif augmentation == 2:
       im = np.transpose(np.rot90(t_im,2), [2, 0, 1])
-    elif self.last_augmentation == 3:
+    elif augmentation == 3:
       im = np.transpose(np.rot90(t_im,3), [2, 0, 1])
-    elif self.last_augmentation == 4:
+    elif augmentation == 4:
       im = np.transpose(np.fliplr(t_im), [2, 0, 1])
-    elif self.last_augmentation == 5:
+    elif augmentation == 5:
       im = np.transpose(np.flipud(t_im), [2, 0, 1])
-    elif self.last_augmentation == 6:
+    elif augmentation == 6:
       im = np.transpose(np.rot90(np.flipud(t_im), 1), [2, 0, 1])
-    elif self.last_augmentation == 7:
+    elif augmentation == 7:
       im = np.transpose(np.rot90(np.fliplr(t_im), 1), [2, 0, 1])
-    if mask:
-      self.last_augmentation += 1
     return im
+
+  def augment(self, im_list):
+    augmented = list()
+    for im in im_list:
+      augmented.append(self._augment(im, self.last_augmentation))
+    self.last_augmentation = (self.last_augmentation + 1) % 8
+    return augmented
 
   def generate_cropped(self, idxs, crop_size):
     # maybe store everything in memory
@@ -199,17 +205,12 @@ class Dataset():
 
       [im, m, w] = self.generate_one_cropped(image_id, crop_size, x_begin, y_begin)
       if self.augmentation:
-        im = self.augment(im)
-        m = self.augment(m, mask=True)
+        im, m = self.augment([im, m])
 
       images[i] = im
       masks[i] = m
-      #weights = np.append(weights, actual_weights , axis=0)
-    #not_is_zero = np.asarray(np.sum(masks, axis=(-1,-2)) != 0, dtype='float32')
-    #not_is_zero_sum = np.transpose(np.reshape(np.tile(np.sum(not_is_zero, axis=-1),10),[10,16]))
-    #not_is_zero_sum = not_is_zero_sum + 1*(not_is_zero_sum == 0)
-    #not_is_zero = not_is_zero/not_is_zero_sum
-    #return [[images[:, 0:3, :, :], images[:, 3:, :, :]], [masks, not_is_zero], [weights, weights]]
+
+      i=i+1
     return [[images[:,0:3,:,:], images[:,3:,:,:]], masks]
 
   def generator(self, chunk_size):
@@ -307,6 +308,18 @@ if __name__ == '__main__':
   for i in range(100000):
     start_time = datetime.datetime.now().time().strftime('%H:%M:%S')
     images, masks = generator.next()
+    for k in range(16):
+      predicted_masks = images[1][k]
+      a = ImageProcessor()
+      im = a.image_for_display(images[0][k])
+      tiff.imshow(np.transpose(im, [1, 2, 0]))
+      plt.savefig(TEMP_IMAGE_DIR + '/img_' + str(k) + str(i) + '.jpg')
+      for j in range(len(predicted_masks)):
+        plt.imshow(predicted_masks[j])
+        plt.savefig(TEMP_IMAGE_DIR + '/img_' + str(k) + str(i) + '_m_' + str(j) + '_' + str(i) + '.jpg')
+      for j in range(len(masks[k])):
+        plt.imshow(masks[k][j])
+        plt.savefig(TEMP_IMAGE_DIR + '/img_' + str(k) + str(i) + '_mask_' + str(j) + '_' + str(i) + '.jpg')
     area = area + np.sum(masks, axis=(0,-1,-2))
     print 'total_area =' + str(area/((i+1)*16*224*224))
     is_zero_counts = is_zero_counts + np.sum(np.sum(masks, axis=(2, 3)) == 0, axis=0)/16.0

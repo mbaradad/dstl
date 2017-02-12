@@ -9,6 +9,9 @@ from PIL import Image, ImageDraw
 import shapely.affinity
 import cv2
 
+import cv2
+import tifffile as tiff
+
 '''
 Classes of masks
 1. Buildings
@@ -39,9 +42,17 @@ class ImageProcessor():
       #resize is specified in the opposite order than np.shape!
       if len(image.shape) == 2:
         image = np.expand_dims(image, 0)
+      if i == 'A':
+        #compensate for borders
+        image = image.repeat(2, axis=1).repeat(2, axis=2)
+        image = image[:, 1:-1, 1:-1]
       image = np.transpose(image, [1,2,0])
       image = resize(image, images[0].shape[0], images[0].shape[1])
-      image = np.transpose(image, [2, 0, 1])
+      image = self._align_two_rasters(np.transpose(images[0:3], [1,2,0]), image)
+      if len(image.shape) == 2:
+        image = np.expand_dims(image, axis=0)
+      else:
+        image = np.transpose(image, [2, 0, 1])
       images = np.append(images, image, axis=0)
 
     #TODO: Noramlize and substract mean at this point?
@@ -102,3 +113,41 @@ class ImageProcessor():
   def image_for_display(self, im):
     return 255 * self.scale_percentile(im)
 
+  def stretch_n(bands, lower_percent=5, higher_percent=95):
+    out = np.zeros_like(bands)
+    n = bands.shape[2]
+    for i in range(n):
+      a = 0  # np.min(band)
+      b = 1  # np.max(band)
+      c = np.percentile(bands[:, :, i], lower_percent)
+      d = np.percentile(bands[:, :, i], higher_percent)
+      t = a + (bands[:, :, i] - c) * (b - a) / (d - c)
+      t[t < a] = a
+      t[t > b] = b
+      out[:, :, i] = t
+
+    return out.astype(np.float32)
+
+
+  def _align_two_rasters(self, img1,img2):
+      try:
+          p1 = img1[300:1900,300:2200,1].astype(np.float32)
+          p2 = img2[300:1900,300:2200,0].astype(np.float32)
+      except:
+          print("_align_two_rasters: can't extract patch, falling back to whole image")
+          p1 = img1[:,:,1]
+          p2 = img2[:,:,0]
+
+      # lp1 = cv2.Laplacian(p1,cv2.CV_32F,ksize=5)
+      # lp2 = cv2.Laplacian(p2,cv2.CV_32F,ksize=5)
+
+      warp_mode = cv2.MOTION_TRANSLATION
+      warp_matrix = np.eye(2, 3, dtype=np.float32)
+      criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 1000,  1e-7)
+      (cc, warp_matrix) = cv2.findTransformECC (p1, p2,warp_matrix, warp_mode, criteria)
+      print("_align_two_rasters: cc:{}".format(cc))
+
+      img3 = cv2.warpAffine(img2, warp_matrix, (img1.shape[1], img1.shape[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP, borderMode=cv2.BORDER_REPLICATE)
+      img3[img3 == 0] = np.average(img3)
+
+      return img3
