@@ -38,19 +38,16 @@ def iou_loss(y_true, y_pred):
   #This is approximately the size of an object when its present in the mask
   smooth = 1e-6
   iou = (smooth + K.sum(
-     tf.mul(y_true, y_pred), axis=[-2, -1])) / (
-            smooth + l1_pred + l1_true - K.sum(tf.mul(y_true, y_pred), axis=[-2, -1]))
+     (y_true * y_pred), axis=[-2, -1])) / (
+            smooth + l1_pred + l1_true - K.sum((y_true * y_pred), axis=[-2, -1]))
 
-  real_iou = (K.sum(tf.mul(y_true, y_pred), axis=[-2, -1])) / (
-    l1_pred + l1_true - K.sum(tf.mul(y_true, y_pred), axis=[-2, -1]))
+  real_iou = (K.sum((y_true * y_pred), axis=[-2, -1])) / (
+    l1_pred + l1_true - K.sum((y_true * y_pred), axis=[-2, -1]))
 
   #y_true = K.clip(y_true, 1e-6, 1-1e-6)
   #l1_true_clipped = K.sum(K.abs(y_true), axis=[-2,-1])
 
   #smooth = 1
-  #iou = (smooth + K.sum(
-  #  tf.mul(y_true, y_pred), axis=[-2, -1])) / (smooth +
-  #        l1_pred + l1_true - K.sum(tf.mul(y_true, y_pred), axis=[-2, -1]))
 
   #aprox taking into account the receptive field of 32 of the resnet (though it should be 32*32/x
 
@@ -68,13 +65,26 @@ def iou_loss(y_true, y_pred):
   #use iou when groundtruth not zero and l1 to zero when it is zero, and add proportional weights, to account for both
   #actual_cost = (1 - iou) #* not_is_zero + is_zero*K.sum(K.abs(y_pred), axis=[-2,-1])/224/224
 
-  cross_entropy  = K.mean(K.binary_crossentropy(y_pred, y_true), axis=[-1,-2])
-  actual_cost = cross_entropy
+
+  #cross_entropy = K.binary_crossentropy(y_pred, y_true)
+
+  dims = [None,10,224,224]
+  area_percentage = tf.transpose(tf.cast(K.reshape(K.tile(area_occupied_per_class, dims[2]*dims[3]),
+                    [dims[3],dims[2],dims[1]]), 'float32'))
+  weights = y_true * (1 - area_percentage) + K.abs(1 - y_true) * area_percentage
+  #normalize per class
+  weights = weights/(2*((1 - area_percentage)*area_percentage))
+  cross_entropy = K.mean(K.binary_crossentropy(y_pred, y_true), axis=[-1,-2])
+  actual_cost = K.mean(K.binary_crossentropy(y_pred, y_true)*weights, axis=[-1,-2])
+
+  #actual_cost = (1 - real_iou) * K.abs(1 - is_zero) + cross_entropy
 
   actual_cost = tf.Print(actual_cost, [l1_true[0, :]], summarize=2000, message="l1 of y_true: ")
   actual_cost = tf.Print(actual_cost, [K.sum(K.abs(y_pred), axis=[-2,-1])[0, :]], summarize=2000, message="l1 of y_pred: ")
-  actual_cost = tf.Print(actual_cost, [cross_entropy[0, :]], summarize=2000,message="loss for sample 0: ")
+  actual_cost = tf.Print(actual_cost, [cross_entropy[0, :]], summarize=2000,message="cross entropy 0: ")
+  actual_cost = tf.Print(actual_cost, [actual_cost[0, :]], summarize=2000, message="actual cost 0: ")
   actual_cost = tf.Print(actual_cost, [(iou)[0, :]], summarize=2000, message="iou_loss for sample 0: ")
+  actual_cost = tf.Print(actual_cost, [K.sum(weights/224/224, axis=(-1,-2))[0, :]], summarize=2000, message="weights sample 0: ")
   actual_cost = tf.Print(actual_cost, [(real_iou)[0, :]], summarize=2000, message="real iou for sample 0: ")
 
 
@@ -97,24 +107,25 @@ def ensembler_loss(y_true, y_pred):
   l1_true = K.sum(K.abs(y_true), axis=[-2,-1])
   is_zero = tf.to_float(tf.equal(l1_true, 0))
 
-  real_iou = (K.sum(tf.mul(y_true, y_pred), axis=[-2, -1])) / (
-    l1_pred + l1_true - K.sum(tf.mul(y_true, y_pred), axis=[-2, -1]))
+  real_iou = (K.sum((y_true * y_pred), axis=[-2, -1])) / (
+    l1_pred + l1_true - K.sum((y_true * y_pred), axis=[-2, -1]))
 
   #smooth = [1,1,1,1,1,1,100,1,1,1]
   #This is approximately the size of an object when its present in the mask
   #smooth = 224*224*(1-area_occupied_per_class)/(1-zero_masks_percentage_per_class)
-  #y_true = K.clip(y_true, 1e-6, 1-1e-6)
+
+  y_true = K.clip(y_true, 1e-6, 1-1e-6)
 
   iou = (K.sum(
-     tf.mul(y_true, y_pred), axis=[-2, -1])) / (
-            K.sum(K.abs(y_pred), axis=[-2,-1]) + K.sum(K.abs(y_true), axis=[-2,-1]) - K.sum(tf.mul(y_true, y_pred), axis=[-2, -1]))
+     (y_true * y_pred), axis=[-2, -1])) / (
+            K.sum(K.abs(y_pred), axis=[-2,-1]) + K.sum(K.abs(y_true), axis=[-2,-1]) - K.sum((y_true * y_pred), axis=[-2, -1]))
 
 
   #use iou when groundtruth not zero and l1 to zero when it is zero, and add proportional weights, to account for both
   #actual_cost = (1 - iou) #* not_is_zero + is_zero*K.sum(K.abs(y_pred), axis=[-2,-1])/224/224
 
-  cross_entropy  = K.mean(K.binary_crossentropy(y_pred, y_true), axis=[-1,-2])
-  actual_cost = cross_entropy
+  cross_entropy = K.mean(K.binary_crossentropy(y_pred, y_true), axis=[-1,-2])
+  actual_cost = 1 - iou
 
   actual_cost = tf.Print(actual_cost, [l1_true[0, :]], summarize=2000, message="l1 of y_true: ")
   actual_cost = tf.Print(actual_cost, [K.sum(K.abs(y_pred), axis=[-2,-1])[0, :]], summarize=2000, message="l1 of y_pred: ")
@@ -150,15 +161,29 @@ def binary_cross_entropy_loss(y_true, y_pred):
 
   return K.mean(loss, axis=-1)
 
+def binary_cross_entropy_for_class(y_true, y_pred):
+
+  loss = K.binary_crossentropy(y_pred, y_true)
+  loss= tf.Print(loss, [y_true[0, :]], summarize=2000,
+                         message="y_true not_is_zero")
+  loss = tf.Print(loss, [y_pred[0, :]], summarize=2000,
+                         message="y_pred not_is_zero")
+  loss = tf.Print(loss, [loss[0, :]], summarize=2000,
+                  message="binary_cross_entropy")
+
+  return K.mean(loss, axis=-1)
+
+
+
 
 def iou_loss_with_sample_weight(y_true, y_pred):
   # percentage of zero masks for crop 224x224
   zero_masks_percentage_per_class = [0.78762727, 0.71392209, 0.93249225, 0.52611775, 0.05146082,
                                      0.65692784, 0.97864099, 0.97211155, 0.99081452, 0.94876051]**2
 
-  actual_cost = (10e-6 + K.sum(tf.mul(y_true, y_pred), axis=[-2,-1])) / (
+  actual_cost = (10e-6 + K.sum((y_true * y_pred), axis=[-2,-1])) / (
     10e-6 + K.sum(K.abs(y_true), axis=[-2,-1]) +
-    K.sum(K.abs(y_pred), axis=[-2,-1]) - K.sum(tf.mul(y_true, y_pred), axis=[-2,-1]))
+    K.sum(K.abs(y_pred), axis=[-2,-1]) - K.sum((y_true * y_pred), axis=[-2,-1]))
   # sample weights, to take into consideration cropping and zero masks, assigning more weight to non-zero for sparse classes:
 
   is_zero = tf.to_float(tf.equal(tf.reduce_sum(y_true, reduction_indices=( 2,3)), 0))

@@ -12,26 +12,25 @@ import matplotlib.pyplot as plt
 from utils.dirs import TEMP_IMAGE_DIR
 from data.image_processor import ImageProcessor
 import tifffile as tiff
+from utils.utils import savefig
 
 
-def post_process_crf(id):
+def post_process_crf():
   d = Dataset(train=False)
   image_list = d.get_image_list()
-  #id = image_list[0]
-  #d.generate_one(0)
 
-  a = ImageProcessor()
+  id = '6170_3_3'
 
-  id = '6170_4_1'
-
-  submission = '/home/manel/Documents/dstl/output/submissions/submission_2017-02-07_02:24:07.905275.csv'
-  np_dir = '/mnt/sdd1/submissions/submission_2017-02-09_01:26:52.273168/'
+  np_dir = '/mnt/sdd1/submissions/submission_2017-02-18_13:11:59.298593/'
 
   #os.listdir(np_dir)
 
   predicted_maps = list()
   for i in range(10):
-    predicted_maps.append(np.load(np_dir + 'mask_' + id + '_' + str(i) + '.h5.npz')['arr_0'])
+    actual_mask = np.load(np_dir + 'mask_' + id + '_' + str(i) + '.h5.npz')['arr_0']
+    predicted_maps.append(actual_mask)
+    savefig(actual_mask > 0.5, 'predicted_' + str(i))
+
 
   im, _ = d.generate_one(list(image_list).index(id))
 
@@ -40,11 +39,14 @@ def post_process_crf(id):
   im = im[:3]
 
   image = np.transpose(im, [1,2,0])
-  image = a.image_for_display(image)
+
+  #image = a.image_for_display(image)
+  savefig(image, 'image')
+
   unary = np.asarray(predicted_maps, dtype='float32').squeeze()
 
-  tiff.imshow(image)
-  plt.savefig(TEMP_IMAGE_DIR + '/fig.png')
+  #tiff.imshow(image)
+  #plt.savefig(TEMP_IMAGE_DIR + '/fig.png')
 
   #softmax = processed_probabilities.transpose((2, 0, 1))
 
@@ -62,9 +64,9 @@ def post_process_crf(id):
 
   # This potential penalizes small pieces of segmentation that are
   # spatially isolated -- enforces more spatially consistent segmentations
-  feats = create_pairwise_gaussian(sdims=(10, 10), shape=image.shape[:2])
+  feats = create_pairwise_gaussian(sdims=(50, 50), shape=image.shape[:2])
 
-  d.addPairwiseEnergy(feats, compat=3,
+  d.addPairwiseEnergy(feats,
                       kernel=dcrf.DIAG_KERNEL,
                       normalization=dcrf.NORMALIZE_SYMMETRIC)
 
@@ -80,7 +82,7 @@ def post_process_crf(id):
   Q = d.inference(5)
 
   res = np.argmax(Q, axis=0).reshape((image.shape[0], image.shape[1]))
-  map = np.asarray(Q)[5].reshape((image.shape[0], image.shape[1]))
+  map = np.asarray(Q).reshape((10, image.shape[0], image.shape[1]))
 
   #cmap = plt.get_cmap('bwr')
 
@@ -98,4 +100,4 @@ def post_process_crf(id):
   plt.savefig(TEMP_IMAGE_DIR + '/im2.jpg')
 
 if __name__ == "__main__":
-  post_process_crf('6020_1_1')
+  post_process_crf()

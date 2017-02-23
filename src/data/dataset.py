@@ -4,7 +4,6 @@ from utils.dirs import *
 import pandas as pd
 import numpy as np
 import random
-random.seed(1337)
 
 from image_processor import ImageProcessor
 import datetime
@@ -25,7 +24,7 @@ class Dataset():
     self.last_augmentation = 0
     self.normalize = normalize
     self.downsampling = downsampling
-    #self.classes_only = [9]
+    #self.classes_only = [6,7,8,9]
     self.select_non_zero_instances = False
     self.store_processed_images=store_processed_images
 
@@ -71,17 +70,12 @@ class Dataset():
       "Standing water",
       "Vehicle Large",
       "Vehicle Small"]
-    self.means = np.asarray([329.95846619,   414.74250944,   305.02988176,  3191.11093819,
-        3718.8890884 ,  3401.60485121,  3127.57398649,  2612.33625032,
-        2354.97220436,  2288.29265143,  2288.09404569,   293.54224129,
-         305.14513705,   414.94993739,   464.7065359 ,   330.15337527,
-         449.86065868,   409.28267764,   422.98811144,   451.28799937])
-
-    self.stds = np.asarray([25.21697092,   20.26343569,    9.84691434,  274.77193071,
-        319.14481443,  292.78475428,  274.8996716 ,  270.56382503,
-        236.50423548,  244.0594615 ,  255.95098918,    5.41074222,
-          9.81402107,   20.19385471,   29.7182571 ,   25.04388324,
-         36.20191917,   39.99403428,   41.28618233,   29.8104115 ])
+    #calculated on all images
+    self.means = np.asarray([0.4928394, 0.47982568, 0.46422694, 0.59166935, 0.57728465, 0.5922441,
+                             0.58553681, 0.52502159, 0.53468767, 0.51655844, 0.50149747, 0.42840192,
+                             0.45120343, 0.4765435, 0.48011752, 0.48491373, 0.53751297, 0.54642141,
+                             0.56151272, 0.50901619]
+)
 
     #percentage of zero masks for crop 224x224
     self.zero_masks_percentage_per_class = [7.04225352e-02, 1.70496664e-02, 4.26982950e-01, 7.41289844e-04,
@@ -155,8 +149,9 @@ class Dataset():
     else:
       masks_cropped = None
     if self.normalize:
-      #multiply for 255, to do the same as imagenet pretrained model
-      image_cropped = np.transpose((np.transpose(image_cropped, [1, 2, 0]) - self.means[0:len(image_cropped)]) / self.stds[0:len(image_cropped)], [2, 0, 1])*255.0
+      #images are stretched at this point (meaning the dynamic range goes from 0 to 1), so we just substract the means.
+      #also somewhat adapt to dynamic range imagenet (*255)
+      image_cropped = np.transpose((np.transpose(image_cropped, [1, 2, 0]) - self.means), [2, 0, 1])*255.0
 
     #sample weights, to take into consideration cropping and zero masks, assigning more weight to non-zero for sparse classes:
     #is_zero = np.sum(masks_cropped, axis=(1, 2)) == 0
@@ -188,7 +183,11 @@ class Dataset():
   def augment(self, im_list):
     augmented = list()
     for im in im_list:
-      augmented.append(self._augment(im, self.last_augmentation))
+      #for mask during testing
+      if im is None:
+        augmented.append(None)
+      else:
+        augmented.append(self._augment(im, self.last_augmentation))
     self.last_augmentation = (self.last_augmentation + 1) % 8
     return augmented
 
@@ -203,7 +202,7 @@ class Dataset():
       x_begin = id[1]
       y_begin = id[2]
 
-      [im, m, w] = self.generate_one_cropped(image_id, crop_size, x_begin, y_begin)
+      [im, m, _] = self.generate_one_cropped(image_id, crop_size, x_begin, y_begin)
       if self.augmentation:
         im, m = self.augment([im, m])
 
@@ -281,13 +280,13 @@ class Dataset():
             if not_is_zero[i]:
               to_yield.append([[actual[0][0][i], actual[0][1][i]], actual[1][i]])
               good_idx.append(idxs[i])
-          if len(to_yield) > 16:
-            actual_yield = to_yield[:16]
-            to_yield = to_yield[16:]
+          if len(to_yield) > chunk_size:
+            actual_yield = to_yield[:chunk_size]
+            to_yield = to_yield[chunk_size:]
             images = np.expand_dims(actual_yield[0][0][0],axis=0)
             channels = np.expand_dims(actual_yield[0][0][1],axis=0)
             masks = np.expand_dims(actual_yield[0][1],axis=0)
-            for i in range(1,16):
+            for i in range(1,chunk_size):
               images = np.append(images, np.expand_dims(actual_yield[i][0][0],axis=0), axis=0)
               channels = np.append(channels, np.expand_dims(actual_yield[i][0][1],axis=0), axis=0)
               masks = np.append(masks, np.expand_dims(actual_yield[i][1],axis=0), axis=0)
@@ -301,13 +300,26 @@ class Dataset():
 
 if __name__ == '__main__':
   import matplotlib.pyplot as plt
-  d_train = Dataset(train=True, augmentation=True, normalize=True)
-  generator = d_train.cropped_generator(chunk_size=16, crop_size=(224,224), overlapping_percentage=0.2, subset='train')
+
+  chunk_size = 16
+  d_train = Dataset(train=False, augmentation=True, normalize=True)
+  generator = d_train.cropped_generator(chunk_size=chunk_size, crop_size=(224,224), overlapping_percentage=0.2, subset='')
   is_zero_counts = np.zeros([10])
   area = np.zeros([10])
+  means = np.zeros([20])
   for i in range(100000):
+
     start_time = datetime.datetime.now().time().strftime('%H:%M:%S')
     images, masks = generator.next()
+    '''
+
+    images, masks = d_train.generate_one(i)
+    means = means + np.mean(images, axis=(1, 2))
+
+    print 'means'
+    print means/(i+1)
+    '''
+
     for k in range(16):
       predicted_masks = images[1][k]
       a = ImageProcessor()
@@ -343,4 +355,4 @@ if __name__ == '__main__':
     for i in range(0,10):
       plt.imshow(masks[i])
       plt.savefig('../images/img_' + str(idx) + '_m_' + str(i) + '_' + d_train.class_id_to_name(i) +'.jpg')
-  '''
+'''

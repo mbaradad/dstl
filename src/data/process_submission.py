@@ -32,7 +32,7 @@ def process_submission():
   #DON'T USE SIMPLIFYYYY
   #THE PROBLEMS IS POLYGONS OF 1 PIXEL/LINES
   #OR MAYBE USE TRIANGULATE
-  submission = '/home/manel/Documents/dstl/output/submissions/submission_2017-02-09_01:26:52.273168.csv'
+  submission = '/home/manel/Documents/dstl/output/submissions/submission_2017-02-21_01:35:42.024698.csv'
   df = pd.read_csv(submission)
   f = open(submission.replace(".csv", "modified.csv") , 'w')
   f.write(get_header() + '\n')  # python will convert \n to os.linesep
@@ -43,6 +43,7 @@ def process_submission():
       row = df.loc[df['ImageId'] == im].loc[df['ClassType'] == c]
       f.write(",".join(
         [str(row['ImageId'].iloc[0]), str(row['ClassType'].iloc[0]), '"' + str(row['MultipolygonWKT'].iloc[0]) + '"']) + '\n')
+
     continue
   return
   for row in df.iterrows():

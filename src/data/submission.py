@@ -1,5 +1,5 @@
 from dataset import Dataset
-from classifiers.resnet_keras.classifier import ResnetClassifier, MultipleClassifier
+from classifiers.resnet_keras.classifier import ResnetClassifier
 import pycocotools.mask as mask
 import numpy as np
 from utils.utils import *
@@ -46,7 +46,8 @@ def add_prediction(masks, pos, crop_size, predictions, overlapping_percentage):
   return masks
 
 
-def generate_submission(classifier):
+def generate_submission(classifier, chunk_size):
+
   #kernel_closings = [5, 5, 5, 5, 10, 5, 5, 5, 1, 1]
   #kernel_openings = [5, 5, 5, 5, 10, 5, 5, 5, 1, 1]
 
@@ -66,9 +67,9 @@ def generate_submission(classifier):
   mkdir(images_dir)
   f.write(get_header() + '\n')  # python will convert \n to os.linesep
 
-  chunk_size = 16
+  #chunk size must be the same because of the deconv
   crop_size = classifier.get_crop_size()
-  overlapping_percentage = 0.15
+  overlapping_percentage = 0
   idxs = d.get_generator_idxs(crop_size=crop_size, subset="", overlapping_percentage=overlapping_percentage)
   positions_by_idx = dict()
   for idx in idxs:
@@ -76,7 +77,7 @@ def generate_submission(classifier):
       positions_by_idx[idx[0]].append(idx)
     else:
       positions_by_idx[idx[0]] = [idx]
-  #df = pd.read_csv('/home/manel/Documents/dstl/output/submissions/submission_2017-01-31_23:53:38.265697.csv')
+  df = pd.read_csv('/home/manel/Documents/dstl/output/submissions/submission_2017-01-31_23:53:38.265697.csv')
   for idx in range(len(d.get_image_list())):
     print 'Predicting image ' + str(idx + 1) + '/' + str(len(d.get_image_list()))
     '''
@@ -97,20 +98,28 @@ def generate_submission(classifier):
 
     masks = np.zeros([10, d.image_sizes[idx][0], d.image_sizes[idx][1]], dtype='float32')
     d.generate_one(idx)
-    for i in range(0, len(positions_by_idx[idx]), chunk_size):
+    #for i in range(0, len(positions_by_idx[idx]), chunk_size):
 
-      actual_pos = positions_by_idx[idx][i:i+chunk_size]
-      ims = np.zeros([chunk_size, 20, crop_size[0], crop_size[1]])
-      j = 0
-      for pos in actual_pos:
-        im = d.generate_one_cropped(pos[0], crop_size, pos[1], pos[2])[0]
-        ims[j] = im
-        j+=1
-      predictions = classifier.predict([ims[:,:3,:,:], ims[:,3:,:,:]])
+    actual_pos = positions_by_idx[idx]#[i:i+chunk_size]
+    #ims = np.zeros([chunk_size, 20, crop_size[0], crop_size[1]])
+    ims = np.zeros([len(actual_pos), 20, crop_size[0], crop_size[1]])
+    j = 0
+    for pos in actual_pos:
+      im = d.generate_one_cropped(pos[0], crop_size, pos[1], pos[2])[0]
+      ims[j] = im
+      j+=1
+    predictions = classifier.predict([ims[:,:3,:,:], ims[:,3:,:,:]])
+    if overlapping_percentage > 0:
       j = 0
       for pos in actual_pos:
         masks = add_prediction(masks, pos, crop_size, predictions[j], overlapping_percentage)
         j+=1
+    else:
+      j = 0
+      for pos in actual_pos:
+        masks[:, pos[1]:(pos[1] + crop_size[0]), pos[2]:(pos[2] + crop_size[1])] = predictions[j]
+        j += 1
+
     height = masks.shape[1]
     width = masks.shape[2]
     [x_max, y_min] = d.get_grid_size(idx)
@@ -295,7 +304,8 @@ def get_header():
 
 if __name__ == "__main__":
   os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-  classifier = ResnetClassifier(RESNET_KERAS_OUTPUT + "/execution_2017-02-1202:49:27.328895/model.h5")
+  chunk_size = 200
+  classifier = ResnetClassifier(RESNET_KERAS_OUTPUT + "/lr_1e-06_continue_train_vgg2017-02-2302:05:13.633310/model.h5", chunk_size=chunk_size)
   #classifier = MultipleClassifier()
-  generate_submission(classifier)
+  generate_submission(classifier, chunk_size=chunk_size)
 

@@ -48,15 +48,14 @@ class ImageProcessor():
         image = image[:, 1:-1, 1:-1]
       image = np.transpose(image, [1,2,0])
       image = resize(image, images[0].shape[0], images[0].shape[1])
-      image = self._align_two_rasters(np.transpose(images[0:3], [1,2,0]), image)
+      #image = self._align_two_rasters(np.transpose(images[0:3], [1,2,0]), image)
       if len(image.shape) == 2:
         image = np.expand_dims(image, axis=0)
       else:
         image = np.transpose(image, [2, 0, 1])
       images = np.append(images, image, axis=0)
 
-    #TODO: Noramlize and substract mean at this point?
-    return images
+    return self.stretch_n(images)
 
 
   # TODO: maybe do it more efficiently, without requiring pyplot
@@ -113,18 +112,18 @@ class ImageProcessor():
   def image_for_display(self, im):
     return 255 * self.scale_percentile(im)
 
-  def stretch_n(bands, lower_percent=5, higher_percent=95):
-    out = np.zeros_like(bands)
-    n = bands.shape[2]
+  def stretch_n(self, bands, lower_percent=1, higher_percent=99):
+    out = np.zeros_like(bands, np.float32)
+    n = bands.shape[0]
     for i in range(n):
       a = 0  # np.min(band)
       b = 1  # np.max(band)
-      c = np.percentile(bands[:, :, i], lower_percent)
-      d = np.percentile(bands[:, :, i], higher_percent)
-      t = a + (bands[:, :, i] - c) * (b - a) / (d - c)
+      c = np.percentile(bands[i, :, :], lower_percent)
+      d = np.percentile(bands[i, :, :], higher_percent)
+      t = a + (bands[i, :, :] - c) * (b - a) / (d - c)
       t[t < a] = a
       t[t > b] = b
-      out[:, :, i] = t
+      out[i, :, :] = t
 
     return out.astype(np.float32)
 

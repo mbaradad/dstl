@@ -1,6 +1,8 @@
 from scipy.ndimage.interpolation import zoom
 import matplotlib.pyplot as plt
 import numpy as np
+from keras.models import Model
+from dirs import TEMP_IMAGE_DIR
 
 def resize(img, height, width):
   '''
@@ -44,3 +46,21 @@ def normal_coordinates_to_dataset_coordinates(x_p, y_p, im_height, im_width, x_m
   return x, y
 
 
+def save_layers_images(features_model, batch):
+  i = 0
+  for l in features_model.layers:
+    activation_model = Model(input=features_model.input, output=l.output)
+    a = activation_model.predict(batch[0])
+    savefig(np.sum(np.abs(a), axis=-3)[0], str(i) + '_' + l.name)
+    i = i + 1
+
+def save_layer_image(features_model, batch, layer_name, prefix=''):
+  for i in range(len(batch[0][0])):
+    l = features_model.get_layer(layer_name)
+    activation_model = Model(input=features_model.input, output=l.output)
+    a = activation_model.predict(batch[0])
+    savefig(np.sum(np.abs(a), axis=-3)[i], prefix + str(features_model.layers.index(l)) + '_' + str(i) + '_' + l.name)
+
+def savefig(im, name):
+  plt.imshow(im)
+  plt.savefig(TEMP_IMAGE_DIR + '/' + name + '.jpg')

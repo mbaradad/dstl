@@ -22,7 +22,7 @@ batch_size = 16
 # Architecture
 # pretrained_model= None # path of the weights of a pretrained network
 
-model_path = os.path.join(os.getcwd().split('/config')[0] + '/' + dirs.CLASSIFIERS + '/densenet_lasagne', 'FC-DenseNet.py')
+model_path = os.path.join(os.getcwd().split('/config')[0] + '/' + dirs.CLASSIFIERS + '/densenet_lasagne', 'fc_densenet.py')
 net = imp.load_source('Net', model_path).Network(
     input_shape=(None, 20, None, None),
     n_classes=11,

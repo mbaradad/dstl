@@ -1,22 +1,17 @@
-import numpy as np
-import theano.tensor as T
-from lasagne.init import HeUniform
-from lasagne.layers import (InputLayer, ConcatLayer, Conv2DLayer, Pool2DLayer, Deconv2DLayer,
-                            get_all_param_values, set_all_param_values, get_output_shape, get_all_layers)
-from lasagne.nonlinearities import linear
-
-from layers import BN_ReLU_Conv, TransitionDown, TransitionUp, SoftmaxLayer
-
+from layers import BN_ReLU_Conv, TransitionDown, TransitionUp, SigmoidLayer, SoftmaxLayer, BatchNormalization
+from keras.layers import Input, Conv2D, Merge
+from keras.models import Model
+from keras.initializations import he_uniform
 
 class Network():
     def __init__(self,
-                 input_shape=(None, 20, None, None),
+                 input_shape=(None, None, None, None),
                  n_classes=10,
                  n_filters_first_conv=48,
                  n_pool=4,
                  growth_rate=12,
                  n_layers_per_block=5,
-                 dropout_p=0.2):
+                 dropout_p=0.2, chunk_size=3):
         """
         This code implements the Fully Convolutional DenseNet described in https://arxiv.org/abs/1611.09326
         The network consist of a downsampling path, where dense blocks and transition down are applied, followed
@@ -40,20 +35,20 @@ class Network():
         else:
             raise ValueError
 
-        # Theano variables
-        self.input_var = T.tensor4('input_var', dtype='float32')  # input image
-        self.output_var = T.tensor4('output_var', dtype='float32')  # output of the network
-        self.target_var = T.tensor4('target_var', dtype='int32')  # target
 
         #####################
         # First Convolution #
         #####################
 
-        inputs = InputLayer(input_shape, self.input_var)
+        self.inputs = list()
+        self.inputs.append(Input([3,224,224]))
+        self.inputs.append(Input([17,224,224]))
+        input = Merge(mode='concat', concat_axis=1)(self.inputs)
+
+        input = BatchNormalization()(input)
 
         # We perform a first convolution. All the features maps will be stored in the tensor called stack (the Tiramisu)
-        stack = Conv2DLayer(inputs, n_filters_first_conv, filter_size=3, pad='same', W=HeUniform(gain='relu'),
-                            nonlinearity=linear, flip_filters=False)
+        stack = Conv2D(n_filters_first_conv, 3, 3, border_mode='same', init=he_uniform)(input)
         # The number of feature maps in the stack is stored in the variable n_filters
         n_filters = n_filters_first_conv
 
@@ -69,7 +64,7 @@ class Network():
                 # Compute new feature maps
                 l = BN_ReLU_Conv(stack, growth_rate, dropout_p=dropout_p)
                 # And stack it : the Tiramisu is growing
-                stack = ConcatLayer([stack, l])
+                stack = Merge(mode='concat', concat_axis=1)([stack, l])
                 n_filters += growth_rate
             # At the end of the dense block, the current stack is stored in the skip_connections list
             skip_connection_list.append(stack)
@@ -90,7 +85,7 @@ class Network():
         for j in range(n_layers_per_block[n_pool]):
             l = BN_ReLU_Conv(stack, growth_rate, dropout_p=dropout_p)
             block_to_upsample.append(l)
-            stack = ConcatLayer([stack, l])
+            stack = Merge(mode='concat', concat_axis=1)([stack, l])
             n_filters += growth_rate
 
         #######################
@@ -100,7 +95,7 @@ class Network():
         for i in range(n_pool):
             # Transition Up ( Upsampling + concatenation with the skip connection)
             n_filters_keep = growth_rate * n_layers_per_block[n_pool + i]
-            stack = TransitionUp(skip_connection_list[i], block_to_upsample, n_filters_keep)
+            stack = TransitionUp(skip_connection_list[i], block_to_upsample, n_filters_keep, chunk_size)
 
             # Dense Block
             block_to_upsample = []
@@ -108,61 +103,20 @@ class Network():
                 l = BN_ReLU_Conv(stack, growth_rate, dropout_p=dropout_p)
                 n_filters += growth_rate
                 block_to_upsample.append(l)
-                stack = ConcatLayer([stack, l])
+                stack = Merge(mode='concat', concat_axis=1)([stack, l])
 
         #####################
         #      Softmax      #
         #####################
 
-        self.output_layer = SoftmaxLayer(stack, n_classes)
+        self.output_layer = SigmoidLayer(stack, n_classes)
+
+
 
     ################################################################################################################
-
-    def save(self, path):
-        """ Save the weights """
-        np.savez(path, *get_all_param_values(self.output_layer))
-
-    def restore(self, path):
-        """ Load the weights """
-
-        with np.load(path) as f:
-            saved_params_values = [f['arr_%d' % i] for i in range(len(f.files))]
-        set_all_param_values(self.output_layer, saved_params_values)
-
-    def summary(self, light=False):
-        """ Print a summary of the network architecture """
-
-        layer_list = get_all_layers(self.output_layer)
-
-        def filter_function(layer):
-            """ We only display the layers in the list below"""
-            return np.any([isinstance(layer, layer_type) for layer_type in
-                           [InputLayer, Conv2DLayer, Pool2DLayer, Deconv2DLayer, ConcatLayer]])
-
-        layer_list = filter(filter_function, layer_list)
-        output_shape_list = map(get_output_shape, layer_list)
-        layer_name_function = lambda s: str(s).split('.')[3].split('Layer')[0]
-
-        if not light:
-            print('-' * 75)
-            print 'Warning : all the layers are not displayed \n'
-            print '    {:<15} {:<20} {:<20}'.format('Layer', 'Output shape', 'W shape')
-
-            for i, (layer, output_shape) in enumerate(zip(layer_list, output_shape_list)):
-                if hasattr(layer, 'W'):
-                    input_shape = layer.W.get_value().shape
-                else:
-                    input_shape = ''
-
-                print '{:<3} {:<15} {:<20} {:<20}'.format(i + 1, layer_name_function(layer), output_shape, input_shape)
-                if isinstance(layer, Pool2DLayer) | isinstance(layer, Deconv2DLayer):
-                    print('')
-
-        print '\nNumber of Convolutional layers : {}'.format(
-            len(filter(lambda x: isinstance(x, Conv2DLayer) | isinstance(x, Deconv2DLayer), layer_list)))
-        print 'Number of parameters : {}'.format(np.sum(map(np.size, get_all_param_values(self.output_layer))))
-        print('-' * 75)
-
+    def get_model(self):
+        return Model(input=self.inputs, output=self.output_layer)
 
 if __name__ == '__main__':
-    Network(input_shape=(5, 3, 224, 224)).summary()
+    net = Network(input_shape=(20, 224, 224), n_layers_per_block=[4, 5, 7, 10, 12, 15, 12, 10, 7, 5, 4], n_pool=5, growth_rate=16)
+    net.get_model().summary()

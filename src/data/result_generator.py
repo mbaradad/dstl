@@ -7,7 +7,7 @@ from image_processor import ImageProcessor
 import tifffile as tiff
 
 class ResultGenerator():
-  def __init__(self, train=True, augmentation=False, normalize=True, submission_dir='/mnt/sdd1/submissions/submission_2017-02-09_01:26:52.273168', store_processed_images=True):
+  def __init__(self, submission_dir, train=True, augmentation=False, normalize=True, store_processed_images=True):
     #augmentation must be performed in this class, as the dataset augmentation can be extrapolated
     if augmentation:
       raise Exception('augmentation not implemented')
@@ -66,7 +66,7 @@ class ResultGenerator():
       for i in range(len(idx_values) / chunk_size):
         idxs = idx_values[i * chunk_size:(i + 1) * chunk_size]
         gen = self.generate_cropped(idxs, crop_size)
-        print 'yielding'
+        #print 'yielding'
         yield [[gen[0][0], gen[2]], gen[1]]
 
 
